@@ -96,3 +96,100 @@ depends on 18-only behaviour, so lifting the pin is a version bump.
 brief asked only for Ant Design.
 
 **Cost.** None; it is one `npm install` away.
+
+---
+
+## 2026-08-29 — Phase 1, core money layer
+
+### FX rates stored as `usd_per_unit`, not units-per-USD
+
+**Decision.** `FxRate.usd_per_unit` reads as "1 unit of this currency is worth
+N USD". Conversion is `amount * rate`.
+
+**Why.** The alternative direction forces a division, which introduces a
+repeating decimal for most rates and a rounding decision on every conversion.
+Multiplication keeps the arithmetic exact until the single, deliberate
+quantize at the end.
+
+**Cost.** The stored numbers are less familiar to read for weak currencies
+(INR is `0.012`, not `83.3`). Mitigated by `__str__` and the admin listing.
+
+### `decimal_places=8` on the rate
+
+**Decision.** `DecimalField(max_digits=18, decimal_places=8)`.
+
+**Why.** JPY sits near 0.0064 USD. Two or four decimal places would round the
+rate itself to zero or to a materially wrong value before any conversion
+happened.
+
+**Cost.** None meaningful; the column is small either way.
+
+### Rounding is half-up, not Decimal's default half-even
+
+**Decision.** `quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)`.
+
+**Why.** Decimal's default context uses `ROUND_HALF_EVEN` (banker's rounding),
+which makes the result depend on the parity of the preceding digit — 0.005
+rounds to 0.00 but 0.015 rounds to 0.02. That is defensible statistically and
+surprising on a payslip. Half-up is the convention people expect from salary
+figures.
+
+**Cost.** A very slight upward bias across a large population. At ACME's scale
+the total distortion is under a cent per employee, against the benefit of
+figures that reconcile the way an HR manager expects.
+
+**Verified.** The test asserting `0.005 -> 0.01` was checked to fail under
+half-even, so it is not a vacuous assertion.
+
+### `to_usd` rejects floats at the boundary
+
+**Decision.** Non-`Decimal`, non-`int` input raises `TypeError`. `bool` is
+rejected too, despite subclassing `int`.
+
+**Why.** CLAUDE.md forbids float money. Silently coercing a float would honour
+the letter of that and miss the point: the precision is already lost by the
+time the value arrives. Raising makes the mistake visible at the call site.
+
+**Cost.** Callers holding a float must convert explicitly, via
+`Decimal(str(value))`. That is the correct ceremony, not an inconvenience.
+
+**Verified.** The drift test (`2.675 USD -> 2.68`) was checked to produce 2.67
+under a float implementation, so it discriminates.
+
+### Two error types, not one
+
+**Decision.** `UnknownCurrencyError` and `MissingRateError`, both subclassing
+`FxError(ValueError)`.
+
+**Why.** They are different failures with different fixes. An unsupported code
+is bad input data and belongs in a per-row import error the HR manager sees. A
+supported currency with no seeded rate is a deployment fault — the fixture was
+never loaded — and no amount of data cleaning fixes it. One error type would
+send whoever reads it looking in the wrong place.
+
+**Cost.** One extra class. The base `FxError` means callers who genuinely do
+not care can still catch a single type.
+
+### Currency codes are matched case-sensitively
+
+**Decision.** `to_usd(amount, "inr")` raises `UnknownCurrencyError`.
+
+**Why.** Normalising case is a parsing concern, and the layer that sees raw
+user input is the CSV importer. Doing it here would silently accept malformed
+data everywhere else too, and hide the fact that a file needs cleaning.
+
+**Cost.** The import layer must upper-case codes before calling `to_usd`.
+Tracked for Phase 5.
+
+### Known gap: `to_usd` queries per call
+
+**Decision.** `get_rate` does one `FxRate` query per conversion. Left as is.
+
+**Why.** The Phase 1 brief fixes the signature at `to_usd(amount, currency)`,
+and a module-level cache would need invalidation logic that is easy to get
+wrong in tests.
+
+**Cost.** Real. Importing 10,000 rows through this function would issue 10,000
+queries, against ARCHITECTURE.md §5's batched design. Phase 5 needs a
+`rate_map()` helper that loads all eight rates once and a bulk-friendly call
+path. Flagged here so it is not discovered late.
