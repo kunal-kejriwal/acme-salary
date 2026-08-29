@@ -1,0 +1,34 @@
+[
+  {
+    "model": "core.fxrate",
+    "fields": { "currency": "USD", "usd_per_unit": "1.00000000" }
+  },
+  {
+    "model": "core.fxrate",
+    "fields": { "currency": "EUR", "usd_per_unit": "1.08000000" }
+  },
+  {
+    "model": "core.fxrate",
+    "fields": { "currency": "GBP", "usd_per_unit": "1.27000000" }
+  },
+  {
+    "model": "core.fxrate",
+    "fields": { "currency": "AUD", "usd_per_unit": "0.66000000" }
+  },
+  {
+    "model": "core.fxrate",
+    "fields": { "currency": "SGD", "usd_per_unit": "0.74000000" }
+  },
+  {
+    "model": "core.fxrate",
+    "fields": { "currency": "BRL", "usd_per_unit": "0.18000000" }
+  },
+  {
+    "model": "core.fxrate",
+    "fields": { "currency": "INR", "usd_per_unit": "0.01200000" }
+  },
+  {
+    "model": "core.fxrate",
+    "fields": { "currency": "JPY", "usd_per_unit": "0.00640000" }
+  }
+]
