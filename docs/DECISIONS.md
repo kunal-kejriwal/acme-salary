@@ -193,3 +193,97 @@ wrong in tests.
 queries, against ARCHITECTURE.md §5's batched design. Phase 5 needs a
 `rate_map()` helper that loads all eight rates once and a bulk-friendly call
 path. Flagged here so it is not discovered late.
+
+---
+
+## 2026-08-29 — Phase 2, employee model and CRUD API
+
+### `SalaryChange` records currency on both sides — a deviation from the §3 ERD
+
+**Decision.** The ERD in ARCHITECTURE.md §3 gives `SALARY_CHANGE` a single
+`currency` column. The model has `old_currency` and `new_currency` instead.
+
+**Why.** With one column, a move from 100,000 INR to 2,000 USD — a substantial
+raise — stores `old_amount=100000, new_amount=2000, currency=USD` and reads
+back as a 98% pay cut. An audit trail that can invert the direction of a pay
+change is worse than a diagram that has drifted, and this is precisely the
+table HR and compliance would reach for.
+
+**Cost.** ARCHITECTURE.md §3 is now out of date on this entity. Two extra
+columns, both cheap.
+
+**Alternative rejected.** Forbidding currency changes on the update path would
+have preserved the ERD, but relocation between countries is an ordinary HR
+event and the product should not refuse it to protect a diagram.
+
+### The audit write lives in the service, not a signal or `save()` override
+
+**Decision.** `update_employee` writes the `SalaryChange` row explicitly. There
+is no `post_save` receiver and no overridden `save()`.
+
+**Why.** A model hook is the obvious-looking place and the wrong one. It fires
+on fixture loads and data migrations, producing audit rows nobody asked for. It
+does *not* fire on `bulk_create` or `QuerySet.update()`, so Phase 5's batched
+import would silently write no history at all. And it hides the write from
+anyone reading the call site, which is the opposite of what an audit trail is
+for.
+
+**Cost.** Any future write path must remember to go through the service. The
+model makes forgetting expensive: `salary_usd` is `NOT NULL` with no default,
+so a bypassing write fails rather than silently storing a wrong figure.
+
+**Guarded by tests.** `TestAuditIsNotHiddenInTheModel` asserts that a direct
+`employee.save()` and a `QuerySet.update()` both write *no* audit row. If
+someone relocates the logic into a hook, those tests fail — which is the
+intent.
+
+### Non-negative salary is a `CheckConstraint`, not only a validator
+
+**Decision.** Both, but the database constraint is the one that matters.
+
+**Why.** `MinValueValidator` only runs on `full_clean()`, which
+`bulk_create` skips entirely. Phase 5 inserts thousands of rows that way.
+
+**Cost.** None. Zero is allowed — unpaid interns and leave-of-absence records
+are real.
+
+### Case normalisation at the serializer, strictness in `core.to_usd`
+
+**Decision.** `to_usd("inr")` still raises. `POST /employees` with
+`{"currency": "inr"}` succeeds and stores `INR`.
+
+**Why.** The two layers have different jobs. A currency code arriving at
+`to_usd` from an internal caller is a programming or data-pipeline fault and
+should surface. A code arriving over HTTP is user input, and rejecting it on
+case alone is hostile. Forgiving at the boundary, exact underneath.
+
+**Implementation note.** The normalisation runs in `to_internal_value`, not
+`validate_currency`. DRF's `ChoiceField` rejects `"eur"` during field
+validation, before any `validate_<field>` hook is reached — a `validate_currency`
+implementation would look correct and never run.
+
+**Cost.** `to_internal_value` is a slightly heavier hook than a field
+validator, and it copies the incoming data. Country gets the same treatment for
+consistency.
+
+### `salary_usd` is read-only over the API
+
+**Decision.** Clients cannot set it on create or update.
+
+**Why.** It is derived. Accepting it would let a caller store a normalised
+figure that contradicts the salary it is supposed to represent, and every
+analytics aggregate reads the derived column.
+
+**Cost.** None. A test asserts a client-supplied value is ignored rather than
+honoured, so the field cannot quietly become writable.
+
+### `SimpleRouter` rather than `DefaultRouter`
+
+**Decision.** `SimpleRouter` in each app's `urls.py`.
+
+**Why.** Employees, imports and analytics are all included at the `/api/v1`
+prefix. `DefaultRouter` registers an API-root view at `""`, so three of them
+would collide and only the first would resolve.
+
+**Cost.** No browsable API index at `/api/v1/`. `/api/docs/` already serves
+that purpose better.
