@@ -1,0 +1,9 @@
+# Normalize to LF in the repository. The API image is built on Linux, so
+# CRLF leaking into entrypoints or Dockerfiles breaks the container.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff binary
+*.woff2 binary
