@@ -287,3 +287,57 @@ would collide and only the first would resolve.
 
 **Cost.** No browsable API index at `/api/v1/`. `/api/docs/` already serves
 that purpose better.
+
+---
+
+## 2026-08-30 — Scope confirmed by the Incubyte team
+
+A clarification email to the Incubyte team (Sandli Srivastava) came back with
+direct answers on five open questions. Scope is adjusted mid-build to match.
+`REQUIREMENTS.md` §3 records the answers; this entry records what they cost.
+
+### What changed
+
+| Guidance | Effect |
+|---|---|
+| Currency model confirmed as proposed | No change. Phase 1 already ships local-currency storage with a seeded FX table and USD normalisation. |
+| Schema confirmed: ID, Name, Department, **Job Title**, Country, Base Salary, Currency, Joined Date | `job_title` added to the model, indexes, list filters, seed and analytics groupings. |
+| Bulk CSV import **not expected**; a Faker seed script is sufficient | F3 demoted from core to stretch; the import phase moves last. |
+| Authentication, self-service and RBAC **explicitly out** | F7 (login) deleted; auth moved to Deliberately Out; the old "Export + auth" phase keeps only the export. |
+| Graded on architecture, server-side performance at 10k, documentation — not speed | Success criteria rewritten around deterministic seeding and committed performance evidence. |
+
+### Cost of the adjustment
+
+Close to zero, but not literally zero, and worth being precise about since the
+guidance arrived *after* Phase 2 had already shipped:
+
+- **Auth removal: no cost.** No user model, login endpoint or permission
+  matrix was ever built. DRF's `IsAuthenticated` default and the session-auth
+  config in `settings/base.py` stay as a sane posture, and the API tests keep
+  a small check that anonymous access is refused — but no auth *feature* was
+  written and none now needs unwinding.
+- **Import demotion: no cost.** `apps/imports` is an empty scaffold. Nothing
+  in the core scope imports from it.
+- **`job_title`: real but bounded rework.** Phase 2 landed without it, so the
+  column, its index, a migration, the serializer field and the affected tests
+  are outstanding. One migration on a table with no production data.
+
+The larger win is what the guidance prevented: Phases 5 through 8 had not
+started, so the import pipeline, the login page and the RBAC groundwork were
+never written and then thrown away.
+
+### Grading emphasis and where the repo answers it
+
+The team named three priorities. Each maps to something concrete:
+
+| Priority | Evidence in the repo |
+|---|---|
+| **Clean code architecture** | Thin views, business logic in per-app `services.py` tested directly; `to_usd` isolated from HTTP; the audit write deliberately in the service rather than a signal, with tests asserting no hidden write path (`TestAuditIsNotHiddenInTheModel`). |
+| **Server-side performance across 10,000 records** | Server-side pagination, filtering and aggregation throughout; indexes per ARCHITECTURE.md §8; `django_assert_num_queries` already pinning the employee list view; Phase 8 commits query-count and timing evidence at full seed size rather than asserting it. |
+| **Strong documentation** | `REQUIREMENTS.md` for scope, `ARCHITECTURE.md` for design and its rationale, this log for trade-offs, `AI_USAGE.md` for workflow, and commit bodies that state the reasoning and the assumptions behind each step. |
+
+### Note on the ERD
+
+`ARCHITECTURE.md` §3 now carries `job_title`. It remains out of date in one
+other place, recorded separately above: `SALARY_CHANGE` stores currency on both
+sides, which the diagram does not show.

@@ -50,6 +50,7 @@ erDiagram
         string first_name
         string last_name
         string department "indexed"
+        string job_title "indexed"
         string country "ISO 3166-1, indexed"
         date joined_on
         numeric salary_amount "local currency"
@@ -104,19 +105,24 @@ REST via DRF, versioned under `/api/v1`, browsable API in dev, OpenAPI schema vi
 | `GET /employees` | Server-side pagination, ordering, and filters (`country`, `department`, `currency`, salary range, free-text search) via `django-filter` |
 | `POST /employees` · `GET/PUT/DELETE /employees/{id}` | CRUD; salary updates append to `salary_change` |
 | `GET /employees/{id}/salary-history` | Audit trail for one employee |
-| `POST /imports` | CSV upload → validate → batched insert → returns the full import report (id, counts, errors) |
-| `GET /imports/{id}` | Re-fetch a past import's report |
-| `GET /imports/{id}/errors.csv` | Downloadable per-row error report |
+| `POST /imports` **(stretch)** | CSV upload → validate → batched insert → returns the full import report (id, counts, errors) |
+| `GET /imports/{id}` **(stretch)** | Re-fetch a past import's report |
+| `GET /imports/{id}/errors.csv` **(stretch)** | Downloadable per-row error report |
 | `GET /exports/employees.csv` | Filtered export (round-trip back to Excel) |
 | `GET /analytics/summary` | Headcount, total/avg/median cost (USD) |
-| `GET /analytics/by-country` · `/by-department` | Avg, median, p10/p90 salary + headcount per group |
+| `GET /analytics/by-country` · `/by-department` · `/by-title` | Avg, median, p10/p90 salary + headcount per group |
 | `GET /analytics/distribution` | Salary histogram buckets (USD) |
 
 The API is UI-agnostic by design — a future payroll/HRIS integration or employee self-service portal consumes the same endpoints.
 
 ---
 
-## 5. CSV Import Pipeline
+## 5. CSV Import Pipeline — Stretch Scope
+
+> **Stretch scope.** The Incubyte team confirmed bulk CSV import with row-by-row
+> validation is not expected; a deterministic seed script covers the 10,000
+> records instead (§7, F3). This section is retained as the design that would be
+> built if time permits, and is deliberately the last thing attempted.
 
 The one flow with real design tension. Chosen shape:
 
@@ -161,7 +167,7 @@ Built test-first; commit history shows red → green → refactor.
 ## 8. Performance Considerations
 
 - **Server-side pagination everywhere** — the browser never receives 10k rows.
-- **Indexes** on `country`, `department`, `(last_name, first_name)`, `employee_code`; analytics group-bys hit indexed columns. `select_related`/`only` where list views need it.
+- **Indexes** on `country`, `department`, `job_title`, `(last_name, first_name)`, `employee_code`; analytics group-bys hit indexed columns. `select_related`/`only` where list views need it.
 - **Batched writes** for import (§5).
 - **Seed realism:** salaries drawn log-normal per country/level so distributions and dashboards look like a real org, not `uniform(30k, 200k)`.
 - At 10k rows, every aggregate in §4 runs in single-digit milliseconds on Postgres; no caching layer is warranted (see §9 for when it would be).
@@ -175,7 +181,7 @@ Built test-first; commit history shows red → green → refactor.
 | Celery + broker (async import) | 3-service overhead for a 3-second job | >1M rows or concurrent multi-file imports: presigned S3 upload → queue → workers → `202` + status polling; DLQ for infra failures only |
 | Live FX rates | Static table is deterministic, testable, and honest for a demo | Real deployment: daily rate ingestion + effective-dated `fx_rates`, recompute `salary_usd` on rate change |
 | Employee self-service | Brief specifies one persona (HR manager) | Add roles to Django's user model, `/me` endpoints on the same API |
-| Full RBAC | Single admin persona; Django auth + one HR user suffices | Groups/permissions at the service layer — Django's permission framework is already in place |
+| **Authentication, login, and RBAC** | **Scoped out by the Incubyte team.** The application is internal and the user is an already-authorized, single HR manager. Standing up a user model and a role matrix for one known operator is over-engineering | SSO/IdP at the edge (the app trusts an authenticated proxy), then Django groups and permissions enforced in the service layer once a second persona exists |
 | Payroll execution / payslips | Managing salary data ≠ paying people | Separate bounded context; integrate via the existing API |
 | Caching / read replicas | All queries are ms-fast at this scale | ~1M+ employees or heavy concurrent analytics |
 

@@ -4,8 +4,9 @@ Salary data management for ACME's HR team — replacing an Excel workflow for
 ~10,000 employees across multiple countries.
 
 Django 5 + DRF API, React + TypeScript + Ant Design SPA. See
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design and its rationale,
-and [docs/DECISIONS.md](docs/DECISIONS.md) for the trade-off log.
+[docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) for scope and its confirmed
+boundaries, [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design and its
+rationale, and [docs/DECISIONS.md](docs/DECISIONS.md) for the trade-off log.
 
 > **Status: scaffold.** The project structure, tooling and test harness are in
 > place. Domain models, endpoints and UI pages are built phase by phase — see
