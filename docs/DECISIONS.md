@@ -562,7 +562,7 @@ would be roughly 10.
 ## Performance evidence — 10,000 records
 
 Measured, not claimed. Reproduce with `python scripts/benchmark.py`.
-Refreshed at Phase 6; supersedes the Phase 4 figures.
+Refreshed at Phase 8; supersedes the earlier figures.
 
 **Environment.** SQLite (the development default), Python 3.14.7, Django
 5.2.17, Windows, warm cache, median and p95 of 20 requests through the full
@@ -572,50 +572,56 @@ generally favourably on the aggregate paths.
 
 | Measurement | Result |
 |---|---|
-| Seed 10,000 employees | **4.15 s** (2,407 rows/s, 257 statements) |
+| Seed 10,000 employees | **5.42 s** (1,845 rows/s, 257 statements) |
+| Full backend suite | **9.86 s**, 339 tests |
+| Frontend suite | 8 tests |
 
 | Endpoint (10,000 rows) | Median | p95 | Queries |
 |---|---|---|---|
-| List, first page | 12.4 ms | 80.5 ms | 4 |
-| Filtered by country | 13.1 ms | 16.1 ms | 4 |
-| Filtered by department + job title | 12.2 ms | 21.7 ms | 4 |
-| Salary range (USD) | 12.0 ms | 15.2 ms | 4 |
-| Free-text search | 13.3 ms | 23.3 ms | 4 |
-| Ordered by salary, descending | 12.7 ms | 13.7 ms | 4 |
-| Filter + search + order combined | 14.7 ms | 25.0 ms | 4 |
-| Deep page (page 200 of 400) | 19.7 ms | 22.8 ms | 4 |
-| Analytics: summary | 49.6 ms | 58.4 ms | 4 |
-| Analytics: by country | 67.9 ms | 107.6 ms | 4 |
-| Analytics: by department | 66.5 ms | 72.0 ms | 4 |
-| Analytics: by title | 73.4 ms | 82.1 ms | 4 |
+| List, first page | 10.5 ms | 64.9 ms | 4 |
+| Filtered by country | 12.6 ms | 16.6 ms | 4 |
+| Filtered by department + job title | 12.2 ms | 25.2 ms | 4 |
+| Salary range (USD) | 13.8 ms | 17.0 ms | 4 |
+| Free-text search | 14.5 ms | 31.6 ms | 4 |
+| Ordered by salary, descending | 12.9 ms | 16.4 ms | 4 |
+| Filter + search + order combined | 15.4 ms | 22.0 ms | 4 |
+| Deep page (page 200 of 400) | 20.9 ms | 24.0 ms | 4 |
+| Analytics: summary | 52.8 ms | 69.1 ms | 4 |
+| Analytics: by country | 73.2 ms | 127.6 ms | 4 |
+| Analytics: by department | 77.4 ms | 84.4 ms | 4 |
+| Analytics: by title | 69.4 ms | 127.9 ms | 4 |
+
+**Bundle, after code-splitting the dashboard:** 322 kB gzipped on first load
+(down from 751 kB), with the 429 kB chart bundle deferred to the one page that
+uses it.
 
 **On the query count.** Four everywhere. Two belong to the endpoint — for the
 list, a `COUNT(*)` and the page `SELECT`; for analytics, the GROUP BY aggregate
 and the median window query. The other two are the session and user lookups
-that session authentication costs. Since Phase 6b those are the honest price of
-a real request rather than a benchmark artifact, so they are counted here
-rather than excluded. The suite pins the endpoint's own two, because
-`force_authenticate` skips the session round trip.
+that session authentication costs. Those are the honest price of a real
+request, so they are counted here rather than excluded. The suite pins the
+endpoint's own two, because `force_authenticate` skips the session round trip.
 
-**Why the seed moved from 3.28 s to 4.15 s.** Not a regression. The Phase 4
-run seeded an empty table; this one flushes 10,000 existing rows first, and
-SQLite chunks the delete's `IN` clause into many statements — which is also
-where the extra 99 statements come from.
+**Run-to-run variance is real.** The seed has measured 3.28 s, 4.15 s and
+5.42 s across phases on the same machine; analytics has moved by 10 ms between
+runs. Nothing changed in those paths — this is an unloaded developer laptop, not
+a benchmark rig. Treat the figures as orders of magnitude, not as a stopwatch:
+the claim they support is "milliseconds, not seconds, at 10,000 rows", and that
+holds with a wide margin.
 
 **On analytics being four to six times the list.** Expected: the list reads one
 page of 25 rows off an index, while every analytics endpoint ranks and
-aggregates all 10,000. It is still under a tenth of a second for a dashboard
-that loads once.
+aggregates all 10,000. Still under a tenth of a second for a dashboard that
+loads once.
 
 **A composite index would make it worse — measured, not assumed.** Adding
 `(country, salary_usd)`, `(department, salary_usd)`, `(job_title, salary_usd)`
 and `(salary_usd)` and re-running moved the service-level timings the wrong
 way: summary +14%, by-country +15%, by-department +25%, by-title +18%. SQLite's
 planner takes the index and turns a sequential scan plus sort into a
-non-covering index scan with a row lookup per hit, which is worse when the
-query touches every row anyway. The indexes were not added. Postgres may well
-choose differently, which is a reason to re-measure there rather than to
-speculate here.
+non-covering index scan with a row lookup per hit, which loses when the query
+touches every row anyway. The indexes were not added. Postgres may choose
+differently, which is a reason to re-measure there rather than speculate here.
 
 **Reading it.** Every list scenario is inside a single frame at 60fps and every
 dashboard query inside a tenth of a second, on the slower of the two databases,
@@ -893,3 +899,87 @@ beside its provider. Both patterns are idiomatic for what they do; silencing
 them would mean adopting a data-fetching library or splitting a two-export
 file, and neither buys anything here. Recorded so their presence is a decision
 rather than an oversight.
+
+---
+
+## 2026-08-30 — Phase 8, deploy, and closing notes
+
+### `seed --if-empty`, so the release command can be unconditional
+
+**Decision.** A flag that makes seeding a no-op when employees already exist,
+rather than the error a bare re-seed raises.
+
+**Why.** The Railway release command runs on *every* deploy. Without this,
+either the first deploy is special-cased by hand, or the second one fails
+because employee codes collide. `--if-empty` lets one command be correct
+forever.
+
+**Detail worth noting.** It still ensures FX rates even when it skips the
+employees — rates can be missing while employees are not, and conversion
+breaks without them. `--if-empty` with `--flush` is rejected: one says leave
+the data alone, the other says replace it.
+
+### `SECRET_KEY` has no production fallback
+
+**Decision.** `config/settings/prod.py` calls `env("DJANGO_SECRET_KEY")` with
+no default, so a missing value raises at import.
+
+**Why.** A default here is worse than a crash. The app would boot on the
+development key, sign session cookies with a value that is in the repository,
+and give no signal that anything is wrong. **Verified** by running the
+production checks with the variable unset and confirming `ImproperlyConfigured`.
+
+`manage.py check --deploy --settings=config.settings.prod` now reports **no
+issues** — the three that remained were schema-generation warnings, fixed by
+naming the shared currency enum once and annotating the auth views.
+
+### WhiteNoise rather than a static host
+
+**Decision.** The admin's CSS and JS are served from the app process.
+
+**Why.** The admin is the only server-rendered surface in the product. A CDN or
+a separate static origin would be infrastructure for one page. The SPA is
+already on Vercel's edge, which is where the static assets that matter live.
+
+### The dashboard is code-split
+
+**Decision.** `React.lazy` on the dashboard route.
+
+**Why.** `@ant-design/plots` is the single heaviest dependency and exactly one
+of three pages uses it. First load falls from 751 kB gzipped to **322 kB**, and
+the 429 kB chart bundle arrives only for someone who opens the dashboard —
+which is not the page people land on.
+
+**Cost.** A brief spinner on first navigation to the dashboard.
+
+---
+
+## Closing note
+
+**What was built.** Employee records with a full CRUD API and admin, a list
+that works server-side at 10,000 rows, an append-only salary audit trail
+visible in the UI the moment a change is made, analytics answering "how does
+this org pay people" in a single reporting currency, a deterministic seed, and
+session sign-in.
+
+**What was deliberately not built**, and why, is in REQUIREMENTS.md §6. The
+short version: CSV import and export were cut on the team's own guidance that a
+polished core beats breadth, and no user model, RBAC or self-service exists
+because one known operator needs none of it.
+
+**The one place we went past the brief** is authentication (F6), and the
+reasoning is recorded rather than assumed: "already authorized" describes a
+person, not a request, and a public demo with no sign-in would serve ACME's
+entire salary table to anyone with the URL.
+
+**Numbers.** 339 backend tests in 9.86 s, 8 frontend tests, ~1,800 lines of
+application code against ~2,800 lines of tests, 36 commits.
+
+**A habit worth naming**, because it shaped the code more than any single
+decision: wherever an assertion could plausibly pass against a broken
+implementation, the implementation was temporarily broken to check the test
+failed. That caught a float-precision test that passed either way, a filter
+test that would have passed with filtering removed, an ordering test with only
+one row in it, and a history assertion matching the wrong element. Each is
+recorded above at the point it was found. A test that cannot fail is not
+evidence, and the difference is invisible until someone checks.

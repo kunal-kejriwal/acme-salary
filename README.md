@@ -145,6 +145,65 @@ docs/              architecture, decisions, build prompts
 
 ---
 
+## Deployment
+
+The API runs on Railway (Gunicorn + managed Postgres), the SPA on Vercel. No
+containers: one process and one managed database is not something worth
+orchestrating.
+
+### API — Railway
+
+1. Point a new Railway service at this repo and add a **PostgreSQL** plugin.
+   `DATABASE_URL` is injected automatically.
+2. Set the remaining variables:
+
+   | Variable | Value |
+   |---|---|
+   | `DJANGO_SETTINGS_MODULE` | `config.settings.prod` |
+   | `DJANGO_SECRET_KEY` | a long random string — `python -c "from django.core.management.utils import get_random_secret_key as k; print(k())"` |
+   | `DJANGO_ALLOWED_HOSTS` | your Railway domain |
+   | `CORS_ALLOWED_ORIGINS` | your Vercel URL |
+   | `CSRF_TRUSTED_ORIGINS` | your Vercel URL |
+
+3. Deploy. [`railway.json`](railway.json) runs `migrate` and
+   `seed --if-empty --count 10000` before each release, so a fresh database
+   fills itself and later deploys leave the data alone.
+4. **Create the HR account**, once, from the Railway shell:
+
+   ```bash
+   python manage.py createsuperuser
+   ```
+
+   This is the only account. It signs in to both the SPA and `/admin`.
+
+`config/settings/prod.py` has no fallback for `DJANGO_SECRET_KEY` — a deploy
+missing it fails at boot rather than quietly running on the development key.
+`python manage.py check --deploy --settings=config.settings.prod` reports no
+issues.
+
+### SPA — Vercel
+
+Import the repo, set **Root Directory** to `frontend`, and set one variable:
+
+| Variable | Value |
+|---|---|
+| `VITE_API_BASE_URL` | `https://<your-railway-domain>/api/v1` |
+
+[`frontend/vercel.json`](frontend/vercel.json) rewrites unknown paths to the
+SPA shell, so reloading `/employees/<id>` does not 404 at the edge.
+
+Because the two live on different domains, the session cookie has to survive a
+cross-site request: `config/settings/prod.py` sets `SameSite=None` with
+`Secure=True`, which browsers only honour together.
+
+### Demo
+
+- **Live app:** _(deploy and paste the Vercel URL here)_
+- **API docs:** _(your Railway domain)_`/api/docs/`
+- **Walkthrough video:** _(paste link here)_
+
+---
+
 ## Configuration
 
 All environment-driven; see [`.env.example`](.env.example) for the full list.
