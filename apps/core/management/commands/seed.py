@@ -27,6 +27,14 @@ class Command(BaseCommand):
             help="Delete existing employees first. Required to re-seed.",
         )
         parser.add_argument(
+            "--if-empty",
+            action="store_true",
+            help=(
+                "Do nothing if employees already exist. For release commands "
+                "that run on every deploy."
+            ),
+        )
+        parser.add_argument(
             "--seed",
             type=int,
             default=DEFAULT_SEED,
@@ -39,13 +47,19 @@ class Command(BaseCommand):
                 options["count"],
                 seed=options["seed"],
                 flush=options["flush"],
+                if_empty=options["if_empty"],
             )
         except SeedError as exc:
             raise CommandError(str(exc)) from exc
 
-        if options["verbosity"]:
+        if not options["verbosity"]:
+            return
+
+        if created:
             self.stdout.write(
                 self.style.SUCCESS(
                     f"Seeded {created} employees (seed={options['seed']})."
                 )
             )
+        else:
+            self.stdout.write("Employees already present; nothing seeded.")

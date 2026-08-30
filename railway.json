@@ -1,0 +1,13 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "builder": "NIXPACKS",
+    "buildCommand": "python manage.py collectstatic --noinput"
+  },
+  "deploy": {
+    "preDeployCommand": "python manage.py migrate --noinput && python manage.py seed --if-empty --count 10000",
+    "startCommand": "gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 3 --access-logfile -",
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 3
+  }
+}

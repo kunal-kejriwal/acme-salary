@@ -1,0 +1,3 @@
+# Nixpacks and most PaaS builders look for a requirements.txt at the root.
+# The real lists live under requirements/.
+-r requirements/prod.txt

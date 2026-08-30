@@ -8,6 +8,7 @@ three endpoints with no schema of their own.
 from django.contrib.auth import authenticate, login, logout
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import ensure_csrf_cookie
+from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -20,6 +21,13 @@ from apps.accounts.serializers import LoginSerializer, UserSerializer
 INVALID_CREDENTIALS = "Invalid username or password."
 
 
+@extend_schema(
+    request=LoginSerializer,
+    responses={
+        200: UserSerializer,
+        401: OpenApiResponse(description="Invalid username or password."),
+    },
+)
 @method_decorator(ensure_csrf_cookie, name="dispatch")
 class LoginView(APIView):
     """Exchange credentials for a session cookie.
@@ -49,6 +57,10 @@ class LoginView(APIView):
         return Response(UserSerializer(user).data)
 
 
+@extend_schema(
+    request=None,
+    responses={204: OpenApiResponse(description="Session ended.")},
+)
 class LogoutView(APIView):
     """End the session. Requires one, so a stale tab gets a clear 403."""
 
@@ -59,6 +71,12 @@ class LogoutView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+@extend_schema(
+    responses={
+        200: UserSerializer,
+        401: OpenApiResponse(description="Not signed in."),
+    },
+)
 @method_decorator(ensure_csrf_cookie, name="dispatch")
 class MeView(APIView):
     """Who am I? The SPA's bootstrap probe.

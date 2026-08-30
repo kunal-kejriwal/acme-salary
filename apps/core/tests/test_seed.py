@@ -411,3 +411,49 @@ class TestManagementCommand:
         call_command("seed", "--count", "5", verbosity=0)
         with pytest.raises(CommandError, match="--flush"):
             call_command("seed", "--count", "5", verbosity=0)
+
+
+class TestIfEmpty:
+    """The release command runs on every deploy.
+
+    It must populate a fresh database and then keep quiet, without the
+    operator having to remember which deploy is the first one.
+    """
+
+    def test_seeds_a_fresh_database(self, db):
+        assert seed_employees(20, if_empty=True) == 20
+        assert Employee.objects.count() == 20
+
+    def test_is_a_no_op_when_employees_exist(self, db):
+        seed_employees(20)
+        assert seed_employees(20, if_empty=True) == 0
+        assert Employee.objects.count() == 20
+
+    def test_does_not_raise_when_it_skips(self, db):
+        """Unlike a bare re-seed, which refuses. A deploy must not fail
+        merely because the database is already populated."""
+        seed_employees(5)
+        seed_employees(5, if_empty=True)  # no exception
+
+    def test_leaves_existing_rows_untouched(self, db):
+        seed_employees(20)
+        before = business_rows()
+        seed_employees(20, if_empty=True)
+        assert business_rows() == before
+
+    def test_still_ensures_fx_rates_when_it_skips(self, db):
+        """Rates could be missing even when employees are not."""
+        seed_employees(5)
+        FxRate.objects.all().delete()
+        seed_employees(5, if_empty=True)
+        assert FxRate.objects.count() == len(Currency.values)
+
+    def test_conflicts_with_flush(self, db):
+        """One says replace everything, the other says touch nothing."""
+        with pytest.raises(SeedError, match="--flush"):
+            seed_employees(5, if_empty=True, flush=True)
+
+    def test_command_flag_is_wired(self, db):
+        call_command("seed", "--count", "10", verbosity=0)
+        call_command("seed", "--count", "10", "--if-empty", verbosity=0)
+        assert Employee.objects.count() == 10

@@ -210,21 +210,39 @@ def _build_employee(index, rng, fakers, rates):
 
 @transaction.atomic
 def seed_employees(
-    count: int, *, seed: int = DEFAULT_SEED, flush: bool = False
+    count: int,
+    *,
+    seed: int = DEFAULT_SEED,
+    flush: bool = False,
+    if_empty: bool = False,
 ) -> int:
     """Create `count` employees. Returns how many landed.
 
     Creates employees and FX rates. Nothing else -- no users: authentication
-    is out of scope (REQUIREMENTS.md §6).
+    uses Django's built-in user, created once at deploy time.
+
+    `if_empty` makes the call a no-op when employees already exist, rather
+    than an error. That is what lets the release command run unconditionally
+    on every deploy: it fills a fresh database and then keeps quiet, with no
+    operator having to remember which deploy was the first.
     """
     if count < 0:
         raise SeedError(f"count must be zero or more, got {count}.")
+    if if_empty and flush:
+        raise SeedError(
+            "--if-empty and --flush contradict each other: one says leave "
+            "existing data alone, the other says replace it."
+        )
 
+    # Runs even when the seed itself is skipped -- rates can be missing while
+    # employees are not, and conversion breaks without them.
     ensure_fx_rates()
 
     if flush:
         Employee.objects.all().delete()  # cascades to salary history
     elif Employee.objects.exists():
+        if if_empty:
+            return 0
         raise SeedError(
             "The database already holds employees and their codes would "
             "collide. Re-run with --flush to replace them."

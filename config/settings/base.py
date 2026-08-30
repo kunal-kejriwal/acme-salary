@@ -134,6 +134,12 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
     "SCHEMA_PATH_PREFIX": "/api/v1",
+    # SalaryChange carries the currency twice, so the generator would name the
+    # same choice set OldCurrencyEnum and NewCurrencyEnum. One name for one
+    # enum.
+    "ENUM_NAME_OVERRIDES": {
+        "CurrencyEnum": "apps.core.constants.Currency.choices",
+    },
 }
 
 # --- CORS -----------------------------------------------------------------
