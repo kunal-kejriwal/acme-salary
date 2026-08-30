@@ -24,8 +24,13 @@ SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=True)
 SECURE_HSTS_SECONDS = env.int("SECURE_HSTS_SECONDS", default=31536000)
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
+# The SPA and the API are on different hosts in the deployed setup, so the
+# session cookie has to survive a cross-site request. Browsers only honour
+# SameSite=None when Secure is also set, which is why these move together.
+SESSION_COOKIE_SAMESITE = env("SESSION_COOKIE_SAMESITE", default="None")
+SESSION_COOKIE_SECURE = env.bool("SESSION_COOKIE_SECURE", default=True)
+CSRF_COOKIE_SAMESITE = env("CSRF_COOKIE_SAMESITE", default="None")
+CSRF_COOKIE_SECURE = env.bool("CSRF_COOKIE_SECURE", default=True)
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
 X_FRAME_OPTIONS = "DENY"
 

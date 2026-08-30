@@ -42,6 +42,7 @@ THIRD_PARTY_APPS = [
 ]
 
 LOCAL_APPS = [
+    "apps.accounts",
     "apps.core",
     "apps.employees",
     "apps.analytics",
@@ -138,4 +139,25 @@ SPECTACULAR_SETTINGS = {
 # --- CORS -----------------------------------------------------------------
 
 CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")
+# The SPA authenticates with a session cookie, so the browser has to be
+# allowed to send it cross-origin.
 CORS_ALLOW_CREDENTIALS = True
+
+# --- Session and CSRF cookies ---------------------------------------------
+# Defaults suit same-origin development. A split-domain deployment (SPA on
+# one host, API on another) needs SameSite=None with Secure=True, which
+# browsers only accept together -- so both are environment-driven rather than
+# hardcoded, and prod.py sets them.
+SESSION_COOKIE_SAMESITE = env("SESSION_COOKIE_SAMESITE", default="Lax")
+SESSION_COOKIE_SECURE = env.bool("SESSION_COOKIE_SECURE", default=False)
+CSRF_COOKIE_SAMESITE = env("CSRF_COOKIE_SAMESITE", default="Lax")
+CSRF_COOKIE_SECURE = env.bool("CSRF_COOKIE_SECURE", default=False)
+
+# The SPA reads the CSRF cookie to set X-CSRFToken, so it must not be
+# HttpOnly. Django's default is already False; stated here because it is a
+# deliberate part of the auth design rather than an oversight.
+CSRF_COOKIE_HTTPONLY = False
+
+# Origins allowed to send unsafe requests. Required once the SPA is on a
+# different host from the API.
+CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
