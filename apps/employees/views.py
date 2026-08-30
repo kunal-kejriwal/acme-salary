@@ -7,6 +7,7 @@ about money.
 
 from rest_framework import viewsets
 
+from apps.employees.filters import EmployeeFilter
 from apps.employees.models import Employee
 from apps.employees.serializers import EmployeeSerializer
 from apps.employees.services import (
@@ -22,10 +23,23 @@ class EmployeeViewSet(viewsets.ModelViewSet):
     queryset = Employee.objects.all()
     serializer_class = EmployeeSerializer
 
-    # Phase 3 builds out the full filter, search and ordering surface. These
-    # cover job_title only, which the confirmed schema added.
-    filterset_fields = ["job_title"]
-    ordering_fields = ["job_title", "last_name", "salary_usd", "joined_on"]
+    filterset_class = EmployeeFilter
+
+    # Free-text search covers who the person is, not where they sit --
+    # department and job title have their own exact filters, and folding them
+    # into search would make "Finance" match both a name and a department.
+    search_fields = ["first_name", "last_name", "employee_code"]
+
+    ordering_fields = [
+        "last_name",
+        "first_name",
+        "job_title",
+        "department",
+        "country",
+        "salary_usd",
+        "joined_on",
+        "employee_code",
+    ]
 
     def perform_create(self, serializer):
         serializer.instance = create_employee(**serializer.validated_data)

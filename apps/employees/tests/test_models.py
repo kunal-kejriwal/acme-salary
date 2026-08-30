@@ -148,8 +148,13 @@ class TestEmployeeIndexes:
         assert all(isinstance(i, Index) for i in Employee._meta.indexes)
 
     def test_default_ordering_matches_the_name_index(self):
-        """Ordering off an index keeps pagination cheap and stable."""
-        assert Employee._meta.ordering == ["last_name", "first_name"]
+        """Ordering off an index keeps pagination cheap."""
+        assert Employee._meta.ordering[:2] == ["last_name", "first_name"]
+
+    def test_default_ordering_is_total(self):
+        """Names are not unique, so the default order needs a tiebreaker or
+        tied rows can straddle a page boundary."""
+        assert Employee._meta.ordering[-1] == "id"
 
 
 class TestSalaryChange:

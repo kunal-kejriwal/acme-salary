@@ -63,8 +63,10 @@ class Employee(models.Model):
 
     class Meta:
         # Matches the (last_name, first_name) index, so paging through the
-        # list view stays cheap and the order is stable.
-        ordering = ["last_name", "first_name"]
+        # list view stays cheap. `id` closes it off as a total order: two
+        # people sharing a name would otherwise be returned in an arbitrary
+        # order and could straddle a page boundary.
+        ordering = ["last_name", "first_name", "id"]
         indexes = [
             models.Index(fields=["country"], name="employee_country_idx"),
             models.Index(fields=["department"], name="employee_department_idx"),
