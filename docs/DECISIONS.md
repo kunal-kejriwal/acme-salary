@@ -562,41 +562,65 @@ would be roughly 10.
 ## Performance evidence — 10,000 records
 
 Measured, not claimed. Reproduce with `python scripts/benchmark.py`.
+Refreshed at Phase 6; supersedes the Phase 4 figures.
 
 **Environment.** SQLite (the development default), Python 3.14.7, Django
 5.2.17, Windows, warm cache, median and p95 of 20 requests through the full
-Django stack — routing, filter backends, serializer, pagination — not a bare
-queryset. Postgres in production would differ, generally favourably on the
-aggregate paths.
+Django stack — routing, authentication, filter backends, serializer,
+pagination — not a bare queryset. Postgres in production would differ,
+generally favourably on the aggregate paths.
 
 | Measurement | Result |
 |---|---|
-| Seed 10,000 employees | **3.28 s** (3,046 rows/s, 158 statements) |
+| Seed 10,000 employees | **4.15 s** (2,407 rows/s, 257 statements) |
 
-| List scenario (10,000 rows) | Median | p95 | Queries |
+| Endpoint (10,000 rows) | Median | p95 | Queries |
 |---|---|---|---|
-| List, first page | 7.3 ms | 8.7 ms | 4 |
-| Filtered by country | 8.4 ms | 12.5 ms | 4 |
-| Filtered by department + job title | 7.4 ms | 9.0 ms | 4 |
-| Salary range (USD) | 10.2 ms | 14.3 ms | 4 |
-| Free-text search | 11.2 ms | 12.5 ms | 4 |
-| Ordered by salary, descending | 9.9 ms | 19.5 ms | 4 |
-| Filter + search + order combined | 13.1 ms | 40.5 ms | 4 |
-| Deep page (page 200 of 400) | 14.8 ms | 21.9 ms | 4 |
+| List, first page | 12.4 ms | 80.5 ms | 4 |
+| Filtered by country | 13.1 ms | 16.1 ms | 4 |
+| Filtered by department + job title | 12.2 ms | 21.7 ms | 4 |
+| Salary range (USD) | 12.0 ms | 15.2 ms | 4 |
+| Free-text search | 13.3 ms | 23.3 ms | 4 |
+| Ordered by salary, descending | 12.7 ms | 13.7 ms | 4 |
+| Filter + search + order combined | 14.7 ms | 25.0 ms | 4 |
+| Deep page (page 200 of 400) | 19.7 ms | 22.8 ms | 4 |
+| Analytics: summary | 49.6 ms | 58.4 ms | 4 |
+| Analytics: by country | 67.9 ms | 107.6 ms | 4 |
+| Analytics: by department | 66.5 ms | 72.0 ms | 4 |
+| Analytics: by title | 73.4 ms | 82.1 ms | 4 |
 
-**On the query count.** Four, not the two the test suite pins. Two are the
-endpoint's own — `COUNT(*)` for pagination and the page `SELECT` — and two are
-session and user lookups from `force_login`, which the suite avoids by using
-`force_authenticate`. Verified by dumping the SQL rather than assumed. The
-count is flat across every scenario: filtering, searching and ordering add no
-queries, and a deep page costs the same as the first.
+**On the query count.** Four everywhere. Two belong to the endpoint — for the
+list, a `COUNT(*)` and the page `SELECT`; for analytics, the GROUP BY aggregate
+and the median window query. The other two are the session and user lookups
+that session authentication costs. Since Phase 6b those are the honest price of
+a real request rather than a benchmark artifact, so they are counted here
+rather than excluded. The suite pins the endpoint's own two, because
+`force_authenticate` skips the session round trip.
 
-**Reading it.** Every scenario is comfortably inside a single frame at 60fps,
-on the slower of the two databases, with no caching layer. That is the
-justification for ARCHITECTURE.md §9 listing caching and read replicas as
-deliberately unbuilt.
+**Why the seed moved from 3.28 s to 4.15 s.** Not a regression. The Phase 4
+run seeded an empty table; this one flushes 10,000 existing rows first, and
+SQLite chunks the delete's `IN` clause into many statements — which is also
+where the extra 99 statements come from.
 
-Phase 5 extends this table with the analytics endpoints.
+**On analytics being four to six times the list.** Expected: the list reads one
+page of 25 rows off an index, while every analytics endpoint ranks and
+aggregates all 10,000. It is still under a tenth of a second for a dashboard
+that loads once.
+
+**A composite index would make it worse — measured, not assumed.** Adding
+`(country, salary_usd)`, `(department, salary_usd)`, `(job_title, salary_usd)`
+and `(salary_usd)` and re-running moved the service-level timings the wrong
+way: summary +14%, by-country +15%, by-department +25%, by-title +18%. SQLite's
+planner takes the index and turns a sequential scan plus sort into a
+non-covering index scan with a row lookup per hit, which is worse when the
+query touches every row anyway. The indexes were not added. Postgres may well
+choose differently, which is a reason to re-measure there rather than to
+speculate here.
+
+**Reading it.** Every list scenario is inside a single frame at 60fps and every
+dashboard query inside a tenth of a second, on the slower of the two databases,
+with no caching layer. That is the justification for ARCHITECTURE.md §8 listing
+caching and read replicas as deliberately unbuilt.
 
 ---
 
@@ -730,3 +754,68 @@ responses.
 
 **Tested by comparing the two response bodies**, rather than by asserting each
 separately — which would pass even if the messages diverged.
+
+---
+
+## 2026-08-30 — Phase 6, analytics
+
+### Median without `percentile_cont`
+
+**Decision.** Rank rows within each group with `ROW_NUMBER()`, count the group
+with `COUNT(*) OVER`, keep the rows whose rank is `(n+1)//2` or `(n+2)//2`, and
+average the survivors in Python.
+
+**Why this shape.** SQLite has no `percentile_cont`, so the ordered-set
+aggregate Postgres would use is unavailable. Window functions are portable —
+SQLite has had them since 3.25 — and integer division truncates identically on
+both engines, so one expression is correct everywhere. The filter selects the
+single middle row when a group is odd-sized and the two straddling rows when it
+is even.
+
+**Why the last step is Python.** It cannot be folded into the same query, and
+that was established by trying it rather than assumed: Django applies a window
+filter *after* `GROUP BY`, so adding an aggregate to the ranked queryset emits
+`GROUP BY country, salary_usd` and returns one row per employee — plausible
+SQL, wrong answer. Averaging the one or two survivors in Python is also exact,
+where SQLite's `AVG` routes the value through a float.
+
+**Cost.** Two queries per endpoint instead of one. Neither scales with group
+count, which is the property that matters: a per-group median would be one
+query per job title. Verified against `statistics.median` over all 10,000 seeded
+rows, per country, exact to the cent.
+
+### Grouped rows are keyed `group`, not by the column name
+
+**Decision.** All three breakdowns return `{"group": ..., "headcount": ...}`.
+
+**Why.** One response shape means the dashboard renders country, department and
+title through a single chart component instead of three near-copies.
+
+**Cost.** Slightly less self-describing in isolation; the endpoint name already
+says what the grouping is.
+
+### Explicit `order_by` on the grouped queryset is load-bearing
+
+**Decision.** `.order_by("-headcount", group_field)` after `.values().annotate()`.
+
+**Why.** Two separate reasons, and the first is a correctness trap rather than a
+preference. `Employee.Meta.ordering` is `["last_name", "first_name", "id"]`, and
+Django folds default ordering into the `GROUP BY` — without an explicit
+`order_by` the query groups by `(country, last_name, first_name, id)` and
+returns one row per employee while still looking like a group-by. A test asserts
+five country groups rather than eight rows, which is what catches it.
+
+The second reason is the Phase 3 lesson again: headcount ties need a tiebreaker
+or the dashboard's bars reshuffle between reloads. Four countries in the test
+fixture share a headcount of one, and their order is asserted.
+
+### The test fixture is skewed on purpose
+
+**Decision.** Eight employees across five countries and four currencies, with
+one 400,000 USD outlier.
+
+**Why.** Overall mean is 71,800 and median 28,500; within the US, mean is
+115,000 and median 25,000. If those coincided, no assertion in the suite could
+distinguish a median implementation from a mean one. The Engineering group is
+skewed the other way — median 25,000 above mean 23,000 — so a median that
+happened to sit below the mean everywhere could not pass by coincidence either.
