@@ -819,3 +819,77 @@ one 400,000 USD outlier.
 distinguish a median implementation from a mean one. The Engineering group is
 skewed the other way — median 25,000 above mean 23,000 — so a median that
 happened to sit below the mean everywhere could not pass by coincidence either.
+
+---
+
+## 2026-08-30 — Phase 7, frontend
+
+### One adapter between Ant Design's Table and DRF
+
+**Decision.** `src/api/table.ts` translates `{current, pageSize, sorter,
+filters}` into `{page, ordering, country, …}` and DRF's `{count, results}` back
+into Ant Design's pagination config. Nothing else in the app touches query
+parameters.
+
+**Why.** The two vocabularies genuinely differ, and that translation is the
+only interesting logic in an otherwise dumb table. Spread across page
+components it would be duplicated per screen and testable only through the UI;
+in one module it is neither.
+
+**Two behaviours it encodes** that would otherwise be forgotten per component:
+changing page size returns to page one, and changing a filter does too. Editing
+a filter while on page 7 of the old result set otherwise lands on page 7 of the
+new one, which is usually empty and reads as a bug.
+
+### Display locale is pinned to `en-US`
+
+**Decision.** `toLocaleString('en-US', …)`, not `toLocaleString(undefined, …)`.
+
+**Why.** A real defect avoided rather than a preference. This machine reports
+`en-IN`, where `undefined` renders 2,400,000 as **24,00,000** — correct for
+that locale, wrong for a tool where one salary must read identically to
+everyone looking at it. Left to the browser, a table mixing currencies would
+also mix grouping conventions row by row.
+
+**Found by** a test failing on the formatted string. Otherwise it ships, and is
+noticed only by whoever happens to have a different locale.
+
+**Cost.** An Indian viewer sees INR grouped in the Western convention.
+Consistency wins for a table meant to be compared down a column.
+
+### The History empty state is composed, not defaulted
+
+**Decision.** An `Empty` reading "No salary changes yet", with a line saying
+what will appear there.
+
+**Why.** It is the *common* first view rather than an edge case — a new hire
+has a salary, not a change — and it is the frame the demo transitions away
+from. A blank panel reads as something failing to load; this reads as the
+system reporting that it has nothing yet.
+
+### Three frontend tests, not one per component
+
+**Decision.** The suite covers the table's server round trip, the history read
+including its empty state, and the edit that must appear in history.
+
+**Why.** Those are the paths carrying real risk. A snapshot per card would
+raise the test count without raising confidence, and a reviewer reading for
+craftsmanship correctly reads that as padding.
+
+**MSW returns the real response shapes** — DRF's envelope, money as strings —
+so the tests exercise the same adapter the browser runs. The PATCH handler
+starts returning a history row, which is what makes the third flow a genuine
+round trip rather than an assertion about local state.
+
+**One assertion was passing the wrong way and was fixed:** the history checks
+matched both the record card and the history table, so they are now scoped with
+`within(table)`.
+
+### Known lint warnings, left in place
+
+Four `oxlint` warnings remain: three `set-state-in-effect` on data-fetching
+effects, one `only-export-components` where the auth module exports a hook
+beside its provider. Both patterns are idiomatic for what they do; silencing
+them would mean adopting a data-fetching library or splitting a two-export
+file, and neither buys anything here. Recorded so their presence is a decision
+rather than an oversight.

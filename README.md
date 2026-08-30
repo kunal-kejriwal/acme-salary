@@ -8,9 +8,8 @@ Django 5 + DRF API, React + TypeScript + Ant Design SPA. See
 boundaries, [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design and its
 rationale, and [docs/DECISIONS.md](docs/DECISIONS.md) for the trade-off log.
 
-> **Status: scaffold.** The project structure, tooling and test harness are in
-> place. Domain models, endpoints and UI pages are built phase by phase — see
-> [docs/BUILD_PROMPTS.md](docs/BUILD_PROMPTS.md).
+Build progress and the prompts used are in
+[docs/BUILD_PROMPTS.md](docs/BUILD_PROMPTS.md).
 
 ---
 
@@ -38,17 +37,24 @@ pip install -r requirements/dev.txt
 cp .env.example .env            # optional; sensible defaults apply without it
 
 python manage.py migrate
+python manage.py createsuperuser   # this is the HR manager's account
+python manage.py seed --count 10000
 python manage.py runserver
 ```
+
+The superuser is the only account: authentication is a session over Django's
+built-in user, with no bespoke user model (REQUIREMENTS.md F6). The same
+credentials sign in to the SPA and to `/admin`.
 
 The API is then at <http://localhost:8000>:
 
 | URL | What |
 |---|---|
-| `/api/v1/` | API root (endpoints land in later phases) |
+| `/api/v1/employees/` | Employee list and CRUD |
+| `/api/v1/analytics/summary/` | Headcount and cost, USD |
 | `/api/docs/` | Swagger UI |
 | `/api/schema/` | OpenAPI schema |
-| `/admin/` | Django admin — needs `python manage.py createsuperuser` |
+| `/admin/` | Django admin, back-office over the same data |
 
 ### Tests
 
@@ -92,7 +98,28 @@ The API base URL comes from `VITE_API_BASE_URL` (see `frontend/.env.example`)
 and defaults to `http://localhost:8000/api/v1`. The dev server origin is
 already in the backend's `CORS_ALLOWED_ORIGINS`.
 
-Run the backend and the frontend side by side in two terminals.
+Run the backend and the frontend side by side in two terminals, then sign in
+at <http://localhost:5173> with the superuser you created.
+
+### Pages
+
+| Page | What |
+|---|---|
+| Employees | Server-side table over all 10,000 records: pagination, sorting, filters (country, department, job title, currency, USD salary range) and search |
+| Employee detail | The full record, an edit drawer, and the salary change history |
+| Dashboard | Headcount and cost summary, plus median salary by country, department and job title |
+
+### The two-minute demo
+
+1. Sign in.
+2. Filter the employee list to a country, then sort by USD salary. 10,000
+   records, every query server-side.
+3. Open an employee. The History tab reads **No salary changes yet**.
+4. Edit their salary and save.
+5. History now shows the change: old and new amount, currency, who made it
+   and when, without a reload. The audit row is written by the same service
+   call that changed the pay.
+6. Open the Dashboard for the org-wide view in USD.
 
 ---
 
@@ -101,13 +128,16 @@ Run the backend and the frontend side by side in two terminals.
 ```
 config/            settings package (base/dev/prod/test), urls, wsgi, asgi
 apps/
+  accounts/        session sign-in over Django's built-in user
   core/            shared: currencies, FX rates, seed command
   employees/       employee model, CRUD API, salary audit trail
   analytics/       aggregate queries
   */services.py    business logic — views stay thin
   */tests/         tests colocated per app
 frontend/          Vite + React + TypeScript + Ant Design SPA
-  src/api/         typed API client
+  src/api/         typed API client, CSRF, Table-to-DRF adapter
+  src/pages/       login, employees, employee detail, dashboard
+  src/test/        three-flow suite with MSW
 requirements/      base / dev / prod dependency sets
 scripts/           benchmark.py, reproducible performance measurements
 docs/              architecture, decisions, build prompts
