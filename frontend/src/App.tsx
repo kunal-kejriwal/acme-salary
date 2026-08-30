@@ -1,4 +1,5 @@
 import { Button, Layout, Menu, Space, Spin, Typography } from 'antd'
+import { Suspense, lazy } from 'react'
 import type { ReactNode } from 'react'
 import {
   Navigate,
@@ -9,13 +10,17 @@ import {
 } from 'react-router-dom'
 
 import { useAuth } from './auth/AuthContext'
-import DashboardPage from './pages/DashboardPage'
 import EmployeeDetailPage from './pages/EmployeeDetailPage'
 import EmployeesPage from './pages/EmployeesPage'
 import LoginPage from './pages/LoginPage'
 
 const { Header, Content } = Layout
 const { Title } = Typography
+
+// Charts are the heaviest dependency in the bundle and only this page uses
+// them, so the employee list -- the page people actually land on -- does not
+// pay for them.
+const DashboardPage = lazy(() => import('./pages/DashboardPage'))
 
 export default function App() {
   const { loading } = useAuth()
@@ -62,7 +67,9 @@ export default function App() {
         element={
           <RequireAuth>
             <AppShell>
-              <DashboardPage />
+              <Suspense fallback={<Spin />}>
+                <DashboardPage />
+              </Suspense>
             </AppShell>
           </RequireAuth>
         }
