@@ -13,12 +13,11 @@ Read CLAUDE.md, docs/ARCHITECTURE.md and docs/REQUIREMENTS.md fully.
 Scaffold the project: Django 5 project with config/ settings package (base/dev/prod),
 apps/core, apps/employees, apps/imports, apps/analytics; DRF + django-filter +
 drf-spectacular + django-cors-headers wired; pytest-django configured with SQLite
-test settings; docker-compose.yml with Postgres and the API; Vite React TS app in
-frontend/ with Ant Design installed; README with run instructions.
+test settings; Vite React TS app in frontend/ with Ant Design installed; README
+with run instructions.
 
-Verify: `pytest` runs (zero tests, exit 0), `python manage.py check` passes,
-docker compose config validates. Commit in logical steps (scaffold, test config,
-docker, frontend shell) — not one commit.
+Verify: `pytest` runs, `python manage.py check` passes. Commit in logical steps
+(scaffold, test config, frontend shell) — not one commit.
 ```
 
 ## Phase 1 — Core domain: currencies + FX
@@ -118,9 +117,8 @@ Commit per page, tests alongside.
 ## Phase 8 — Deploy prep
 ```
 Production settings (env-driven DATABASE_URL, ALLOWED_HOSTS, CORS), Gunicorn,
-Dockerfile, Railway config with release command (migrate + seed), Vercel config
-for frontend/, README deploy section. Verify docker compose up works clean from
-scratch. Final pass: run full suite, report timing,
+Railway config with release command (migrate + seed), Vercel config for
+frontend/, README deploy section. Final pass: run full suite, report timing,
 capture query-count and timing evidence for the list and analytics endpoints at
 10,000 records (REQUIREMENTS.md §8), update DECISIONS.md.
 ```
