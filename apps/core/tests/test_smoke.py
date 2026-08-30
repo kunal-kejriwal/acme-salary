@@ -15,7 +15,7 @@ def test_test_settings_are_in_force():
 
 
 def test_local_apps_are_installed():
-    for app in ("apps.core", "apps.employees", "apps.imports", "apps.analytics"):
+    for app in ("apps.core", "apps.employees", "apps.analytics"):
         assert app in settings.INSTALLED_APPS
 
 
