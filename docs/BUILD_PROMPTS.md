@@ -62,17 +62,33 @@ N+1.
 ## Phase 4 — Seed command
 ```
 TDD `python manage.py seed --count 10000` in apps/core:
-- Faker(seed=42); deterministic across runs (test: same checksum of first 100 rows)
-- Countries weighted across the 8 currencies; ~10 departments; a realistic set of
-  job titles per department
-- Salaries log-normal per country and job title so distributions look real
-- bulk_create(batch_size=1000); test that runtime stays under a few seconds and
-  exactly N rows land; idempotent via --flush flag
+- Deterministic given a seed. Test the PROPERTY, not a stored checksum: run
+  the seed twice (--flush between) and assert identical rows. A hardcoded
+  checksum breaks on any Faker upgrade, punishing a dependency bump rather
+  than catching a determinism regression. Pin Faker in requirements anyway.
+  Add the converse test: a different seed must produce different data.
+- Countries weighted across the 8 currencies; ~10 departments; a realistic set
+  of job titles per department
+- Salaries realistic IN LOCAL CURRENCY, driven by (country, job title): each
+  pair gets a local base with log-normal spread, so JPY salaries are in
+  millions, INR in lakhs, USD in tens of thousands. One global range would
+  produce nonsense and make the USD normalisation pointless. Title drives the
+  multiplier so /analytics/by-title shows a seniority gradient.
+- Seed must guarantee FX rates exist before converting — load the fixture
+  first, or row one hits MissingRateError on a fresh database. Test that
+  seeding a virgin DB succeeds.
+- Creates employees and FX rates only. No HR user: auth is out of scope
+  (REQUIREMENTS.md §7).
+- bulk_create(batch_size=1000); assert query count rather than wall time
+  (wall-clock assertions are flaky on CI); exactly N rows land; --flush to
+  re-seed.
 
 This is the confirmed way the 10,000 records are populated (REQUIREMENTS.md §3),
 so it carries the load CSV import would otherwise have carried.
 
-Then run it for real and commit a note of the timing in the commit body.
+Then run it for real at 10,000 and record measured timings for the seed and
+the list endpoint in DECISIONS.md — Sandli named server-side performance at
+10k as a grading axis, so it needs evidence rather than a claim.
 ```
 
 ## Phase 5 — Analytics

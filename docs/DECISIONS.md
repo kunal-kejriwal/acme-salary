@@ -453,3 +453,147 @@ translation code in Phase 7.
 current requirement; if Phase 7 wants a page-size selector it is a one-line
 `page_size_query_param` on a pagination class, and the response shape does not
 change.
+
+---
+
+## 2026-08-30 — Phase 4, seed command
+
+### Determinism is asserted as a property, not a stored checksum
+
+**Decision.** The seed runs twice in the same test and the two datasets are
+compared row for row. `BUILD_PROMPTS.md` originally specified "same checksum of
+first 100 rows"; that design was dropped.
+
+**Why.** A hardcoded checksum tests the wrong thing. Names come from Faker, so
+any Faker upgrade changes them legitimately — and the test would fail, blaming
+a routine dependency bump for a determinism regression that did not happen.
+Worse, the obvious fix is to paste in the new hash, which trains whoever hits
+it to silence the assertion without reading it. Running the seed twice asserts
+the property that actually matters: same seed, same data, whatever the library
+does internally.
+
+**Reinforced.** A companion test seeds with a *different* seed and asserts the
+output differs. Without it, the equality tests would pass against a generator
+that always returned the same constant.
+
+**Also.** Primary keys are drawn from the seeded RNG rather than `uuid4`, so
+the whole dataset reproduces — a fixture that renumbers itself on every run is
+only half reproducible.
+
+**Faker is pinned exactly** (`Faker==40.37.0`) regardless. The property test
+means an upgrade will not break the suite, but the committed dataset should
+move only when someone chooses to move it.
+
+### Salaries are generated per (country, job title), in local currency
+
+**Decision.** Each country carries a local-currency base for a mid-level
+individual contributor; each job title carries a multiplier; a log-normal draw
+supplies the spread; the result is rounded to a locally plausible unit (500 for
+USD, 10,000 for INR, 100,000 for JPY).
+
+**Why.** A single global range makes 80,000 the typical salary everywhere. That
+is reasonable in USD, about 960 USD in INR, and about 510 USD in JPY — figures
+no HR manager would recognise. Two things break as a result: the dashboard
+looks obviously synthetic, and the USD normalisation becomes pointless, since
+every salary would already be numerically comparable and the entire
+multi-currency design would be exercising nothing.
+
+Title driving the multiplier is what gives `/analytics/by-title` a visible
+seniority gradient — the chart that best answers "how does this org pay
+people". Junior Engineer sits at 0.55 and Staff Engineer at 1.90 of the same
+country base.
+
+**Cost.** The country and title tables are hand-maintained data in
+`apps/core/seeding.py`. They are demo data, not domain rules, and live in one
+readable place.
+
+**Tested as properties, not magic numbers.** Median INR salary exceeds ten
+times median USD; JPY likewise; the Engineering ladder shows a strictly
+increasing mean, asserted both across the org and within a single country so
+country mix cannot explain it away.
+
+### The seed guarantees FX rates before it converts
+
+**Decision.** `ensure_fx_rates()` loads the fixture when any currency is
+missing, before the first salary is normalised.
+
+**Why.** Otherwise the first row of a fresh database raises `MissingRateError`
+— the Phase 1 error taxonomy working exactly as designed, and a poor first-run
+experience for anyone following the README. A test seeds a virgin database
+with no fixture loaded and asserts it succeeds.
+
+**Enabled by.** Giving `fx_rates.json` explicit primary keys, which makes
+`loaddata` idempotent. Without them a second load inserts duplicate rows and
+trips the unique constraint on `currency`.
+
+### The seed creates employees and FX rates. Nothing else.
+
+**Decision.** No HR user, no salary history.
+
+**Why.** Authentication is out of scope (REQUIREMENTS.md §7), so the user
+creation carried by the original Phase 4 and Phase 7 prompts has no purpose. A
+seeded employee has a starting salary, not a change, so no `SalaryChange` rows
+either — consistent with `create_employee`, which writes no audit row.
+
+**Tested.** `get_user_model().objects.count() == 0` and
+`SalaryChange.objects.count() == 0` after seeding.
+
+### Batching is asserted by query count, not wall time
+
+**Decision.** The suite asserts query behaviour; timings are measured once and
+recorded below.
+
+**Why.** `BUILD_PROMPTS.md` asked for a test that runtime stays under a few
+seconds. Wall-clock assertions are flaky on shared CI and fail for reasons
+unrelated to the code. Query count is the deterministic proxy.
+
+**A correction worth recording.** The first version asserted that ten times the
+rows cost at most one extra query. That is true on Postgres and false on
+SQLite: SQLite caps parameters per statement at 999, so with `Employee`'s 13
+columns `bulk_create` batches about 76 rows regardless of `batch_size=1000`.
+Postgres allows 65,535, where the configured 1,000 governs. The test now
+asserts the portable property — rows per query rises with row count rather
+than staying flat at one — with the backend difference documented in the test
+itself. The 10,000-row seed issues 158 statements on SQLite; on Postgres it
+would be roughly 10.
+
+---
+
+## Performance evidence — 10,000 records
+
+Measured, not claimed. Reproduce with `python scripts/benchmark.py`.
+
+**Environment.** SQLite (the development default), Python 3.14.7, Django
+5.2.17, Windows, warm cache, median and p95 of 20 requests through the full
+Django stack — routing, filter backends, serializer, pagination — not a bare
+queryset. Postgres in production would differ, generally favourably on the
+aggregate paths.
+
+| Measurement | Result |
+|---|---|
+| Seed 10,000 employees | **3.28 s** (3,046 rows/s, 158 statements) |
+
+| List scenario (10,000 rows) | Median | p95 | Queries |
+|---|---|---|---|
+| List, first page | 7.3 ms | 8.7 ms | 4 |
+| Filtered by country | 8.4 ms | 12.5 ms | 4 |
+| Filtered by department + job title | 7.4 ms | 9.0 ms | 4 |
+| Salary range (USD) | 10.2 ms | 14.3 ms | 4 |
+| Free-text search | 11.2 ms | 12.5 ms | 4 |
+| Ordered by salary, descending | 9.9 ms | 19.5 ms | 4 |
+| Filter + search + order combined | 13.1 ms | 40.5 ms | 4 |
+| Deep page (page 200 of 400) | 14.8 ms | 21.9 ms | 4 |
+
+**On the query count.** Four, not the two the test suite pins. Two are the
+endpoint's own — `COUNT(*)` for pagination and the page `SELECT` — and two are
+session and user lookups from `force_login`, which the suite avoids by using
+`force_authenticate`. Verified by dumping the SQL rather than assumed. The
+count is flat across every scenario: filtering, searching and ordering add no
+queries, and a deep page costs the same as the first.
+
+**Reading it.** Every scenario is comfortably inside a single frame at 60fps,
+on the slower of the two databases, with no caching layer. That is the
+justification for ARCHITECTURE.md §9 listing caching and read replicas as
+deliberately unbuilt.
+
+Phase 5 extends this table with the analytics endpoints.
