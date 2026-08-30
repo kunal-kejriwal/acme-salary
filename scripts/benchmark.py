@@ -11,9 +11,11 @@ It seeds a real database, then times the employee list endpoint through the
 full Django stack -- URL routing, filter backends, serializer, pagination --
 not a bare queryset. Query counts come from the same requests.
 
-The throwaway superuser exists only because the API denies anonymous access.
-It is created here, never by the seed command: authentication is out of
-scope and the seed creates employees and FX rates only.
+The throwaway superuser exists because the API denies anonymous access. It is
+created here, never by the seed command, which creates employees and FX rates
+only. Its session and user lookups are counted in the query numbers below on
+purpose: since Phase 6b every real request carries that cost, so excluding it
+would flatter the figures.
 """
 
 import argparse
@@ -40,31 +42,48 @@ from apps.employees.models import Employee  # noqa: E402
 
 LIST_URL = "/api/v1/employees/"
 
+#: (label, url, query params)
 SCENARIOS = [
-    ("List, first page", {}),
-    ("Filtered by country", {"country": "IN"}),
-    ("Filtered by department + title", {"department": "Engineering", "job_title": "Senior Engineer"}),
-    ("Salary range (USD)", {"salary_usd_min": "40000", "salary_usd_max": "90000"}),
-    ("Free-text search", {"search": "an"}),
-    ("Ordered by salary desc", {"ordering": "-salary_usd"}),
-    ("Filter + search + order", {"department": "Engineering", "search": "a", "ordering": "-salary_usd"}),
-    ("Deep page (page 200)", {"page": "200"}),
+    ("List, first page", LIST_URL, {}),
+    ("Filtered by country", LIST_URL, {"country": "IN"}),
+    (
+        "Filtered by department + title",
+        LIST_URL,
+        {"department": "Engineering", "job_title": "Senior Engineer"},
+    ),
+    (
+        "Salary range (USD)",
+        LIST_URL,
+        {"salary_usd_min": "40000", "salary_usd_max": "90000"},
+    ),
+    ("Free-text search", LIST_URL, {"search": "an"}),
+    ("Ordered by salary desc", LIST_URL, {"ordering": "-salary_usd"}),
+    (
+        "Filter + search + order",
+        LIST_URL,
+        {"department": "Engineering", "search": "a", "ordering": "-salary_usd"},
+    ),
+    ("Deep page (page 200)", LIST_URL, {"page": "200"}),
+    ("Analytics: summary", "/api/v1/analytics/summary/", {}),
+    ("Analytics: by country", "/api/v1/analytics/by-country/", {}),
+    ("Analytics: by department", "/api/v1/analytics/by-department/", {}),
+    ("Analytics: by title", "/api/v1/analytics/by-title/", {}),
 ]
 
 
-def timed(client, params, repeat):
+def timed(client, url, params, repeat):
     """Median and p95 wall time in milliseconds, plus the query count."""
-    client.get(LIST_URL, params)  # warm caches and connection
+    client.get(url, params)  # warm caches and connection
 
     samples = []
     for _ in range(repeat):
         start = time.perf_counter()
-        response = client.get(LIST_URL, params)
+        response = client.get(url, params)
         samples.append((time.perf_counter() - start) * 1000)
-        assert response.status_code == 200, (params, response.status_code)
+        assert response.status_code == 200, (url, params, response.status_code)
 
     with CaptureQueriesContext(connection) as captured:
-        client.get(LIST_URL, params)
+        client.get(url, params)
     queries = len(captured)
 
     samples.sort()
@@ -112,8 +131,8 @@ def main():
 
     print(f"{'Scenario':<34} {'median':>10} {'p95':>10} {'queries':>8}")
     print("-" * 66)
-    for label, params in SCENARIOS:
-        median, p95, queries = timed(client, params, args.repeat)
+    for label, url, params in SCENARIOS:
+        median, p95, queries = timed(client, url, params, args.repeat)
         print(f"{label:<34} {median:>8.1f}ms {p95:>8.1f}ms {queries:>8}")
 
     user.delete()
