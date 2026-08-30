@@ -21,6 +21,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
             "first_name",
             "last_name",
             "department",
+            "job_title",
             "country",
             "joined_on",
             "salary_amount",

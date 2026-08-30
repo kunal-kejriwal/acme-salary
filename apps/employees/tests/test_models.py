@@ -88,6 +88,16 @@ class TestEmployeeFields:
         with pytest.raises(ValidationError):
             employee.full_clean()
 
+    def test_job_title_is_required(self, db, employee_attrs):
+        """Part of the schema confirmed with the team, so not optional."""
+        employee_attrs.pop("job_title")
+        with pytest.raises(ValidationError):
+            Employee(**employee_attrs).full_clean()
+
+    def test_job_title_is_stored(self, employee):
+        employee.refresh_from_db()
+        assert employee.job_title == "Senior Engineer"
+
     def test_joined_on_is_a_date_not_a_datetime(self, employee):
         employee.refresh_from_db()
         assert isinstance(employee.joined_on, dt.date)
@@ -123,6 +133,10 @@ class TestEmployeeIndexes:
 
     def test_department_is_indexed(self):
         assert ("department",) in self._indexed_field_sets()
+
+    def test_job_title_is_indexed(self):
+        """by-title analytics group on it, so it carries an index."""
+        assert ("job_title",) in self._indexed_field_sets()
 
     def test_name_is_indexed_for_sorting(self):
         assert ("last_name", "first_name") in self._indexed_field_sets()

@@ -14,6 +14,7 @@ EMPLOYEE_DEFAULTS = {
     "first_name": "Asha",
     "last_name": "Rao",
     "department": "Engineering",
+    "job_title": "Senior Engineer",
     "country": "IN",
     "joined_on": dt.date(2021, 4, 1),
     "salary_amount": Decimal("2400000.00"),

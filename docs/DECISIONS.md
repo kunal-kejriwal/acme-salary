@@ -320,7 +320,15 @@ guidance arrived *after* Phase 2 had already shipped:
   in the core scope imports from it.
 - **`job_title`: real but bounded rework.** Phase 2 landed without it, so the
   column, its index, a migration, the serializer field and the affected tests
-  are outstanding. One migration on a table with no production data.
+  were outstanding. One migration on a table with no production data.
+
+  **Closed the same day.** `job_title` shipped as migration
+  `0002_employee_job_title` (a one-off default with `preserve_default=False`,
+  so nothing written after it may omit a title), with the index from
+  ARCHITECTURE.md §8, the serializer field, `filterset_fields` and
+  `ordering_fields` entries, admin column, and tests covering the field being
+  required, indexed, returned, filterable and orderable. The docs and the
+  code describe the same model again. Suite: 140 passed.
 
 The larger win is what the guidance prevented: Phases 5 through 8 had not
 started, so the import pipeline, the login page and the RBAC groundwork were

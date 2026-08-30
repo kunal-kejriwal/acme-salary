@@ -34,6 +34,10 @@ class Employee(models.Model):
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
     department = models.CharField(max_length=100)
+    job_title = models.CharField(
+        max_length=100,
+        help_text="Role title; also an analytics grouping.",
+    )
     country = models.CharField(
         max_length=2,
         validators=[iso_3166_alpha_2],
@@ -64,6 +68,7 @@ class Employee(models.Model):
         indexes = [
             models.Index(fields=["country"], name="employee_country_idx"),
             models.Index(fields=["department"], name="employee_department_idx"),
+            models.Index(fields=["job_title"], name="employee_job_title_idx"),
             models.Index(
                 fields=["last_name", "first_name"], name="employee_name_idx"
             ),

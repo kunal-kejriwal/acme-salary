@@ -25,6 +25,7 @@ def payload():
         "first_name": "Marco",
         "last_name": "Bianchi",
         "department": "Finance",
+        "job_title": "Financial Analyst",
         "country": "IT",
         "joined_on": "2022-09-15",
         "salary_amount": "60000.00",
@@ -52,6 +53,44 @@ class TestList:
         row = api_client.get(LIST_URL).json()["results"][0]
         assert isinstance(row["salary_amount"], str)
         assert isinstance(row["salary_usd"], str)
+
+
+class TestJobTitle:
+    """Confirmed part of the schema (REQUIREMENTS.md section 4)."""
+
+    def test_is_returned_by_the_list_view(self, fx_rates, api_client, employee):
+        row = api_client.get(LIST_URL).json()["results"][0]
+        assert row["job_title"] == "Senior Engineer"
+
+    def test_is_accepted_on_create(self, fx_rates, api_client, payload):
+        response = api_client.post(LIST_URL, payload, format="json")
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.json()["job_title"] == "Financial Analyst"
+
+    def test_missing_job_title_is_rejected(self, fx_rates, api_client, payload):
+        del payload["job_title"]
+        response = api_client.post(LIST_URL, payload, format="json")
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "job_title" in response.json()
+
+    def test_list_can_be_filtered_by_job_title(
+        self, fx_rates, api_client, employee, make_employee
+    ):
+        # Two distinct titles, so the assertion fails if filtering is a no-op.
+        make_employee(employee_code="ACME-0002", job_title="Product Manager")
+        body = api_client.get(LIST_URL, {"job_title": "Product Manager"}).json()
+        assert body["count"] == 1
+        assert body["results"][0]["job_title"] == "Product Manager"
+
+    def test_list_can_be_ordered_by_job_title(
+        self, fx_rates, api_client, employee, make_employee
+    ):
+        make_employee(employee_code="ACME-0002", job_title="Analyst")
+        body = api_client.get(LIST_URL, {"ordering": "job_title"}).json()
+        assert [r["job_title"] for r in body["results"]] == [
+            "Analyst",
+            "Senior Engineer",
+        ]
 
 
 class TestRetrieve:

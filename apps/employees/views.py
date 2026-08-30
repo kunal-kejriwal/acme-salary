@@ -22,6 +22,11 @@ class EmployeeViewSet(viewsets.ModelViewSet):
     queryset = Employee.objects.all()
     serializer_class = EmployeeSerializer
 
+    # Phase 3 builds out the full filter, search and ordering surface. These
+    # cover job_title only, which the confirmed schema added.
+    filterset_fields = ["job_title"]
+    ordering_fields = ["job_title", "last_name", "salary_usd", "joined_on"]
+
     def perform_create(self, serializer):
         serializer.instance = create_employee(**serializer.validated_data)
 

@@ -29,6 +29,7 @@ class EmployeeAdmin(admin.ModelAdmin):
         "last_name",
         "first_name",
         "department",
+        "job_title",
         "country",
         "salary_amount",
         "currency",
