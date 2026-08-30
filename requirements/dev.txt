@@ -3,4 +3,8 @@
 pytest>=9.1,<10.0
 pytest-django>=4.14,<5.0
 pytest-cov>=7.1,<8.0
-Faker>=40.0
+# Pinned exactly: the seed's determinism guarantee covers a fixed Faker
+# version. Names are drawn from Faker, so an upgrade can legitimately
+# change them -- the seed tests assert determinism as a property, but the
+# committed dataset should only move when someone chooses to move it.
+Faker==40.37.0
