@@ -349,3 +349,107 @@ The team named three priorities. Each maps to something concrete:
 `ARCHITECTURE.md` §3 now carries `job_title`. It remains out of date in one
 other place, recorded separately above: `SALARY_CHANGE` stores currency on both
 sides, which the diagram does not show.
+
+---
+
+## 2026-08-30 — Phase 3, server-side list view
+
+### Salary range filters compare `salary_usd`, never `salary_amount`
+
+**Decision.** `salary_usd_min` and `salary_usd_max` filter the normalised USD
+column. The local-currency column is not filterable by range at all.
+
+**Why.** This is the one filter where the obvious column returns answers that
+look fine and mean nothing. `salary_amount` is a bare number whose unit varies
+per row, so a range over it compares INR against GBP against JPY. Concretely,
+a "salary between 900,000 and 1,100,000" query would match both a 1,000,000
+INR salary (~12,000 USD) and a 1,000,000 GBP salary (~1,270,000 USD) — two
+people whose actual pay differs by a factor of a hundred — while excluding a
+250,000 USD salary that sits between them. The HR manager asking that question
+is asking about *pay*, not about digits.
+
+This is the write-time normalisation from ARCHITECTURE.md §3 earning its keep.
+Because `salary_usd` is materialised, a cross-currency range query is a plain
+indexed comparison with no join and no conversion at read time.
+
+**Cost.** The USD figures carry the FX staleness already documented for the
+static rate table. A range query is therefore accurate as of the seeded rates,
+not as of today's market — acceptable, and the alternative is wrong rather
+than merely stale.
+
+**Naming.** The parameters say `usd` out loud (`salary_usd_min`, not
+`salary_min`) so a caller cannot mistake which currency the bound is in.
+
+**Verified.** Repointing the filters at `salary_amount` fails 5 of the 7 tests
+in `TestSalaryRangeFiltersOnUsd`, including the case where three employees
+share an identical `salary_amount` and only their USD values separate them.
+
+### Every ordering is total, via an `id` tiebreaker
+
+**Decision.** `StableOrderingFilter` (`apps/core/filters.py`) appends `id` to
+any client-supplied ordering, and `Employee.Meta.ordering` ends in `id` for the
+default path. Registered as the project-wide default filter backend.
+
+**Why.** Every column the UI sorts by — surname, salary, joined date, job title
+— is non-unique. Ordering by one alone is a *partial* order, so tied rows come
+back in whatever sequence the database produces, and that sequence is not
+guaranteed to be the same between two queries. Under pagination this is a
+correctness bug rather than a cosmetic one: when a run of tied rows straddles a
+page boundary, a row can appear on both page 1 and page 2, or on neither. It is
+invisible in small datasets and shows up exactly where it matters — 10,000
+rows, with ties on salary and department.
+
+It also removes any path that could raise Django's
+`UnorderedObjectListWarning`.
+
+**Cost.** One extra sort key, resolved only among rows that already tied. The
+`(last_name, first_name)` index still serves the leading columns.
+
+**Verified.** Removing both mechanisms fails the three id-order assertions.
+
+**Honest limit.** The other three tests in that class — repeated-request
+stability, non-overlapping pages, and the warning guard — pass either way on
+SQLite, whose scan order happens to be stable in practice. They document the
+intent and would catch a regression on Postgres, which genuinely can reorder;
+the id-order assertions are the ones carrying the weight.
+
+### The query-count assertion pins a contract, not an N+1
+
+**Decision.** `django_assert_num_queries(2)` on the list endpoint — one COUNT
+for pagination, one SELECT for the page — with a docstring saying why.
+
+**Why.** `Employee` has no forward relations, so an N+1 cannot occur on this
+endpoint today. Asserted without explanation, the test would read as cargo
+cult. Its value is forward-looking: it fixes the cost of the list view, so the
+moment a relation reaches this serializer — salary history, a department FK,
+anything with a `select_related` it forgot — the extra per-row query fails a
+test in milliseconds instead of surfacing as a slow page at 10,000 rows.
+
+**Cost.** The number must be updated deliberately when the endpoint legitimately
+gains a query. That is the point: the update is a decision someone makes, not a
+regression that slips past.
+
+### Search covers names and employee code only
+
+**Decision.** `search_fields = ["first_name", "last_name", "employee_code"]`.
+
+**Why.** Department, job title, country and currency all have exact filters.
+Folding them into free-text search would make a query for "Finance" match both
+a surname and a department, so the result set stops answering a single
+question.
+
+**Cost.** A user searching for a department in the search box gets nothing.
+The filter bar is the right affordance for that, and Phase 7 builds it.
+
+### Pagination response shape stays DRF's default
+
+**Decision.** `{count, next, previous, results}`, unmodified.
+
+**Why.** Ant Design's `Table` maps onto it directly — `count` to `total`,
+`results` to `dataSource`. A custom envelope would buy nothing and cost
+translation code in Phase 7.
+
+**Not added.** A `page_size` query parameter. The default of 25 covers the
+current requirement; if Phase 7 wants a page-size selector it is a one-line
+`page_size_query_param` on a pagination class, and the response shape does not
+change.
