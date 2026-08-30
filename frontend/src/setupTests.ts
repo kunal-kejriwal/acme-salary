@@ -1,7 +1,7 @@
 import '@testing-library/jest-dom/vitest'
 
-// Ant Design's responsive components read matchMedia, which jsdom does not
-// implement.
+// jsdom implements neither of these, and Ant Design's responsive components
+// reach for both on mount.
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
   value: (query: string) => ({
@@ -15,3 +15,11 @@ Object.defineProperty(window, 'matchMedia', {
     dispatchEvent: () => false,
   }),
 })
+
+class ResizeObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
+globalThis.ResizeObserver ??= ResizeObserverStub as unknown as typeof ResizeObserver
