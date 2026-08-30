@@ -5,11 +5,17 @@ owns salary normalisation and the audit trail. Nothing here decides anything
 about money.
 """
 
+from drf_spectacular.utils import extend_schema
 from rest_framework import viewsets
+from rest_framework.decorators import action
+from rest_framework.response import Response
 
 from apps.employees.filters import EmployeeFilter
 from apps.employees.models import Employee
-from apps.employees.serializers import EmployeeSerializer
+from apps.employees.serializers import (
+    EmployeeSerializer,
+    SalaryChangeSerializer,
+)
 from apps.employees.services import (
     create_employee,
     delete_employee,
@@ -53,3 +59,18 @@ class EmployeeViewSet(viewsets.ModelViewSet):
 
     def perform_destroy(self, instance):
         delete_employee(instance)
+
+    @extend_schema(responses=SalaryChangeSerializer(many=True))
+    @action(detail=True, methods=["get"], url_path="salary-history")
+    def salary_history(self, request, pk=None):
+        """The append-only audit trail for one employee, newest first.
+
+        Paginated like every other list in this API: an employee can
+        accumulate changes indefinitely, and the History tab should not be
+        the one place that loads without a bound.
+        """
+        changes = self.get_object().salary_changes.all()
+
+        page = self.paginate_queryset(changes)
+        serializer = SalaryChangeSerializer(page, many=True)
+        return self.get_paginated_response(serializer.data)
