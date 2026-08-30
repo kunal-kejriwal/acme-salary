@@ -35,7 +35,7 @@ flowchart LR
 | Components | Ant Design | Data-dense HR UI: Table with server-side pagination/sort/filter and charts (`@ant-design/plots`) out of the box |
 | Deployment | Railway (API + managed Postgres), Vercel (SPA) | Public URL with minimal ops surface, no container layer to maintain |
 
-A deliberate side benefit of Django: the **built-in admin** gives a zero-cost back-office over employees and the salary audit trail. It is also the HR manager's credential — since bespoke authentication is out of scope (§8), the admin login is the one account that exists.
+A deliberate side benefit of Django: the **built-in admin** gives a zero-cost back-office over employees and the salary audit trail, reached with the same superuser the SPA signs in as. Sessions come from `django.contrib.auth` — no user model of our own, no roles (§8).
 
 ---
 
@@ -91,11 +91,17 @@ REST via DRF, versioned under `/api/v1`, browsable API in dev, OpenAPI schema vi
 
 | Endpoint | Purpose |
 |---|---|
+| `POST /auth/login` · `POST /auth/logout` · `GET /auth/me` | Session sign-in for the HR account. `/auth/me` is the SPA's bootstrap probe and answers 401 when anonymous |
 | `GET /employees` | Server-side pagination, ordering, and filters (`country`, `department`, `job_title`, `currency`, `salary_usd` range, free-text search) via `django-filter` |
 | `POST /employees` · `GET/PUT/PATCH/DELETE /employees/{id}` | CRUD; salary updates append to `salary_change` |
 | `GET /employees/{id}/salary-history` | Audit trail for one employee |
 | `GET /analytics/summary` | Headcount, total annual cost, average, median (USD) |
 | `GET /analytics/by-country` · `/by-department` · `/by-title` | Headcount, average, median, min, max per group (USD), ordered by headcount |
+
+Every endpoint except the auth ones refuses anonymous callers with 403 —
+enforced project-wide by DRF defaults, and covered by a test that walks the
+URLconf rather than listing paths, so a new endpoint is protected the moment
+it registers.
 
 All analytics figures are expressed in USD, the reporting currency. The API is UI-agnostic by design — a future payroll/HRIS integration consumes the same endpoints.
 
@@ -106,6 +112,7 @@ All analytics figures are expressed in USD, the reporting currency. The API is U
 ```
 config/               # settings (base/dev/prod/test), urls, wsgi, asgi
 apps/
+  accounts/           # session sign-in over Django's built-in user
   core/               # currencies, fx_rates, to_usd, seed command
   employees/          # models, serializers, views, filters, services.py
   analytics/          # aggregate queries behind service functions
@@ -151,7 +158,7 @@ Built test-first; commit history shows red → green → refactor.
 
 | Not built | Why | When it becomes right |
 |---|---|---|
-| **Authentication, login page, RBAC** | Scoped out by the Incubyte team: the app is internal and the user is an already-authorized single HR manager. The Django admin login is the credential that exists | SSO/IdP at the edge, then Django groups and permissions enforced in the service layer once a second persona exists |
+| **A bespoke user model, RBAC, account management** | Scoped out by the team, and rightly: one known operator needs no role matrix. Session sign-in *is* built (see below), over Django's built-in user | SSO/IdP at the edge, then Django groups and permissions in the service layer once a second persona exists |
 | **CSV bulk import** | Team guidance: not expected — a deterministic seed covers the 10,000 records. Cut to keep the core polished | *Stretch path:* stream-parse the upload, validate row by row, insert valid rows with `bulk_create`, and record per-row failures so a partial load reports what landed and what did not. Beyond ~1M rows it moves behind a queue with presigned upload and status polling |
 | **CSV export** | Same call: breadth traded for a polished core | A streaming response over the same filterset the list view already uses |
 | Employee self-service | One persona in scope | `/me` endpoints on the same UI-agnostic API |

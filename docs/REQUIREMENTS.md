@@ -24,7 +24,8 @@ This replaces that workflow with a small internal web application.
 ## 2. Persona
 
 A single HR manager, already authorized, operating an internal tool. There is
-no second role and no employee-facing surface (§6).
+no second role and no employee-facing surface (§6). They sign in (F6); they
+do not manage accounts.
 
 ---
 
@@ -39,14 +40,14 @@ settled decisions, not working assumptions.
 | **Employee schema** | Full ownership to define it. Confirmed shape: **ID, Name, Department, Job Title, Country, Base Salary, Currency, Joined Date.** |
 | **Populating 10,000 records** | A clean database seed script using Faker is *completely sufficient*. Bulk CSV import with row-by-row validation is **not expected**. |
 | **CSV import** | Optional stretch only — and cut (§6). |
-| **Authentication** | Explicitly **scoped out**. The application is internal and the user is an already-authorized single HR manager. |
+| **Authentication** | Explicitly **scoped out**. The application is internal and the user is an already-authorized single HR manager. *We went past this deliberately — see F6 for what was built and why.* |
 | **Employee self-service portal** | Explicitly scoped out. |
 | **RBAC / multi-role permissions** | Explicitly scoped out — building a user model or role matrix upfront would be over-engineering. Future auth/IdP considerations are documented instead. |
 | **Grading emphasis** | Clean code architecture, server-side performance across 10,000 records, and strong documentation — over breadth or speed of submission. |
 
-The Django **admin** is the HR manager's credential and back-office: since no
-bespoke login is built, the admin superuser is the account that exists, and it
-gives a working view over employees and the salary audit trail at zero cost.
+The Django **admin** doubles as the back-office: the superuser it is reached
+with is the same account the SPA signs in as (F6), and it gives a working view
+over employees and the salary audit trail at zero cost.
 
 ---
 
@@ -75,7 +76,7 @@ Two derived stores support the confirmed currency model:
 
 ## 5. Features
 
-Exactly these five. Built in full.
+Exactly these six. Built in full.
 
 ### F1 — Employee records
 Create, view, update and delete an employee carrying every field in §4. Salary
@@ -108,6 +109,22 @@ One command populates 10,000 realistic employees. Same seed, same data, every
 run. Salaries are realistic *in local currency* and driven by country and job
 title, so the analytics reflect a plausible organization rather than noise.
 
+### F6 — Sign-in
+Session-based authentication for the HR manager: a login form, a signed-in
+probe the SPA boots from, and sign-out. Every other endpoint refuses anonymous
+callers. No user model of our own — the deploy-time superuser is the account.
+
+**This goes beyond the team's guidance, deliberately.** They scoped
+authentication out, and they were right that a user model and a role matrix
+would be over-engineering for one known operator. But "the user is already
+authorized" still has to mean something at the HTTP boundary: without a
+sign-in the API is open to anyone who finds the URL, and a deployed public
+demo would expose ACME's entire salary table. The cheap version — Django's own
+session framework over the superuser that has to exist anyway — closes that
+for about a hundred lines and no new schema. What was declined is what they
+actually warned against: a bespoke user model, roles, permissions, self-service
+accounts. None of that is here.
+
 ---
 
 ## 6. Deliberately Out of Scope
@@ -116,8 +133,9 @@ title, so the analytics reflect a plausible organization rather than noise.
 |---|---|---|
 | **CSV bulk import** | Team guidance: not expected — the seed covers the 10,000 records. Optional stretch; cut to keep the core polished | Stream-parse and validate row by row, batch-insert the valid rows, report per-row failures. `ARCHITECTURE.md` §8 carries the design |
 | **CSV export** | Same call: breadth traded for a polished core | A streaming response over the filterset the list view already uses |
-| **Authentication and login page** | Per team guidance. The application is internal and the user is an already-authorized single HR manager; the Django admin login is the credential that exists | SSO/IdP at the edge; Django groups for roles |
+| **A bespoke user model** | Per team guidance — over-engineering for one known operator. Django's built-in user, created as the deploy superuser, is the HR account. Session sign-in over it is F6 | A custom user model once employees or roles need accounts of their own |
 | **RBAC / multi-role permissions** | Per team guidance — over-engineering ahead of a second persona | Django groups and permissions enforced in the service layer |
+| **Password reset, MFA, account management** | One operator, one credential, managed through the Django admin | Standard `django.contrib.auth` views, or an IdP taking it over entirely |
 | **Employee self-service portal** | Per team guidance; one persona in scope | `/me` endpoints on the same UI-agnostic API |
 | Live FX rate feed | A seeded static table is deterministic and testable; the staleness trade-off is documented | Daily rate ingestion with effective-dated rates |
 | Containerization | Nothing to orchestrate: one process, one managed database | Multi-service deployment |

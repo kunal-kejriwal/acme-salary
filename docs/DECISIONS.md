@@ -641,3 +641,92 @@ absence.
 **Known residue.** `apps/imports/` still exists as an empty scaffold in
 `INSTALLED_APPS`. Removing it is a code change and this was a documentation
 pass; it is queued rather than smuggled in.
+
+---
+
+## 2026-08-30 — Session auth, past the brief on purpose
+
+**Decision.** Built session sign-in — `POST /auth/login`, `POST /auth/logout`,
+`GET /auth/me` — over Django's built-in user, and set DRF to refuse anonymous
+callers project-wide. The Incubyte team scoped authentication out; this goes
+past that deliberately.
+
+**Why go past it.** Their reasoning was sound and is accepted in full: for one
+known operator, a bespoke user model and a role matrix are over-engineering.
+But "the user is already authorized" describes a person, not a request. With
+no sign-in, *authorized* has no representation at the HTTP boundary, and a
+deployed public demo would serve ACME's entire salary table — every name, every
+salary — to anyone who found the URL. The version built is the cheap one:
+Django's own session framework over the superuser that has to exist anyway for
+the admin. No new model, no migration, no roles.
+
+**What was still declined**, because it is what they actually warned against: a
+custom user model, RBAC, permission matrices, self-service accounts, password
+reset, MFA. All remain in Deliberately Out.
+
+**Cost.** Three views, one serializer module, a set of cookie settings. The SPA
+gains a login page and a bootstrap probe.
+
+### The endpoint sweep enumerates routes, it does not list them
+
+**Decision.** The "every endpoint refuses anonymous callers" test walks the
+URLconf and parametrizes over what it finds, excluding the auth endpoints.
+
+**Why.** A hardcoded list of paths is correct exactly once. The next endpoint
+someone adds is unprotected *and* uncovered, and the test still passes — it has
+silently stopped doing the job it was written for. Walking the URLconf means
+Phase 6's analytics endpoints are swept the moment they register, with no edit
+here.
+
+**Guarded.** Five assertions check the sweep is not vacuous: routes were
+found, the employee list is among them, a detail route is among them, auth is
+excluded, and every parameter is substituted out. A broken walker that returned
+nothing would otherwise make every parametrized case pass by having nothing to
+run.
+
+**Three bugs it surfaced while being built**, all worth knowing for anyone
+writing a similar sweep:
+
+1. DRF's `SimpleRouter` emits **regex** patterns (`^employees/$`) while
+   `path()` emits **route** patterns (`<uuid:pk>`). Both spellings need
+   handling.
+2. Stripping regex anchors across the joined route eats the `^` inside
+   `[^/.]+` and corrupts the pattern. It has to be done per fragment.
+3. The `<pk>` inside `(?P<pk>...)` matches a naive `<...>` route-parameter
+   pattern, so group substitution must run *first* or it mangles exactly what
+   it is about to replace.
+
+### 403 everywhere, 401 on `/auth/me`
+
+**Decision.** Product endpoints answer 403 to anonymous callers; `/auth/me`
+answers 401.
+
+**Why.** 403 is DRF's session default — it downgrades 401 when the
+authenticator sends no `WWW-Authenticate` header, which `SessionAuthentication`
+does not. Fighting that everywhere would mean a custom authentication class for
+no gain. But `/auth/me` exists precisely to answer "am I signed in?", and the
+SPA routes on the answer, so it returns the unambiguous 401. The inconsistency
+is deliberate and documented rather than accidental.
+
+### Login carries no authenticator
+
+**Decision.** `LoginView.authentication_classes = []`.
+
+**Why.** `SessionAuthentication` enforces CSRF, and enforcing it on the request
+that establishes the session means rejecting a legitimate first login. There is
+no session to protect yet. Both `/auth/login` and `/auth/me` set a CSRF cookie,
+so the SPA holds a token before signing in and a fresh one after.
+
+**Cost.** Login itself is not CSRF-protected. The exposure is login-CSRF —
+forcing a victim into *our* session, not stealing theirs — which for a
+single-account internal tool is close to meaningless.
+
+### One failure message for every bad login
+
+**Decision.** Wrong password and unknown username return byte-identical
+responses.
+
+**Why.** Distinguishing them turns the login form into a user directory.
+
+**Tested by comparing the two response bodies**, rather than by asserting each
+separately — which would pass even if the messages diverged.

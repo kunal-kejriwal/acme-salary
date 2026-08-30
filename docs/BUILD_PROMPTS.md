@@ -10,8 +10,12 @@ Nothing else.
 editing with audit history, analytics that answer "how does the org pay
 people", seed, deploy, demo.
 
-**Out entirely:** CSV import/export, custom auth/login page (Django admin is
-the HR credential), Docker, async, employee self-service.
+**Out entirely:** CSV import/export, Docker, async, employee self-service, a
+bespoke user model, RBAC.
+
+**Added past the brief, deliberately:** session sign-in (Phase 6b). "Already
+authorized" has to mean something at the HTTP boundary once the demo is
+public.
 
 Phases 0–4 are shipped: scaffold, core money layer, employee model + CRUD,
 list at scale, deterministic seed.
@@ -41,6 +45,22 @@ Align all docs with the final scope above, in one commit:
   login references. Grep to verify: "import", "export", "login", "compose".
 ```
 
+## Phase 6b — Session auth (backend) — SHIPPED
+```
+TDD minimal session auth. No new user model — the seed superuser is the HR
+account.
+- POST /api/v1/auth/login (username/password -> session), POST /auth/logout,
+  GET /auth/me (user or 401).
+- DRF defaults: SessionAuthentication + IsAuthenticated project-wide; confirm
+  every existing endpoint now 403s unauthenticated. Enumerate routes
+  dynamically from the URLconf (excluding the auth endpoints) so later phases
+  are covered with zero test edits.
+- Settings for split-domain deploy: CORS_ALLOW_CREDENTIALS, CSRF_TRUSTED_ORIGINS,
+  SESSION_COOKIE_SAMESITE/SECURE + CSRF equivalents env-driven (lax in dev).
+- REQUIREMENTS.md: auth becomes a feature, framed as beyond team guidance,
+  deliberately. DECISIONS.md dated entry.
+```
+
 ## Phase 6 — Analytics API
 ```
 TDD apps/analytics, all values in USD, read-only endpoints:
@@ -66,20 +86,23 @@ timing table in DECISIONS.md.
 Build the SPA against the running API. React 18 + TS + Ant Design, typed API
 client module, react-router. Pages:
 
-1. Employees (home) — Table wired to /employees: server-side pagination,
+1. Login — form posting to /auth/login, redirecting to Employees on success
+   and surfacing the API's error message on failure. The app boots by calling
+   /auth/me: 401 routes to Login, 200 routes to the requested page. The API
+   client sends X-CSRFToken from the csrftoken cookie on unsafe requests.
+2. Employees (home) — Table wired to /employees: server-side pagination,
    column sorting, filter bar (country, department, job title, currency,
    salary_usd min/max), search box (name/code). Row click → detail.
-2. Employee detail — record card (all fields, local salary + USD); "Edit"
+3. Employee detail — record card (all fields, local salary + USD); "Edit"
    opening a drawer form (validation mirrors API errors); History tab —
    table of salary changes (old → new, currency, changed_by, date) from
    /employees/{id}/salary-history, empty-state message when none. A salary
    edit must refresh both the card and the History tab (this is the demo
    moment: change is visible in history immediately).
-3. Dashboard — stat cards from /analytics/summary; three bar charts
+4. Dashboard — stat cards from /analytics/summary; three bar charts
    (by-country, by-department, by-title) via @ant-design/plots, labelled USD.
 
-No login page — app assumes the authorized HR manager per team guidance;
-README points at /admin (superuser) for back-office.
+README points at /admin (same superuser) for back-office.
 
 Vitest + Testing Library, MSW for API mocks: table renders server page and
 passes filter params through; detail page shows history rows; salary edit
