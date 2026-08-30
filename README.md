@@ -103,13 +103,13 @@ config/            settings package (base/dev/prod/test), urls, wsgi, asgi
 apps/
   core/            shared: currencies, FX rates, seed command
   employees/       employee model, CRUD API, salary audit trail
-  imports/         CSV import pipeline and error reports
   analytics/       aggregate queries
   */services.py    business logic — views stay thin
   */tests/         tests colocated per app
 frontend/          Vite + React + TypeScript + Ant Design SPA
   src/api/         typed API client
 requirements/      base / dev / prod dependency sets
+scripts/           benchmark.py, reproducible performance measurements
 docs/              architecture, decisions, build prompts
 ```
 

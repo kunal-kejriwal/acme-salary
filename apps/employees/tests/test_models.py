@@ -123,7 +123,7 @@ class TestEmployeeFields:
 
 
 class TestEmployeeIndexes:
-    """ARCHITECTURE.md section 8 names the indexes the list view depends on."""
+    """ARCHITECTURE.md section 7 names the indexes the list view depends on."""
 
     def _indexed_field_sets(self):
         return {tuple(index.fields) for index in Employee._meta.indexes}

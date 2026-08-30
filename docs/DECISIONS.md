@@ -597,3 +597,47 @@ justification for ARCHITECTURE.md §9 listing caching and read replicas as
 deliberately unbuilt.
 
 Phase 5 extends this table with the analytics endpoints.
+
+---
+
+## 2026-08-30 — Final scope locked
+
+**Decision.** Scope is now exactly the assessment brief plus the Incubyte
+team's clarification email, and nothing else. In: employee records, the list at
+10,000, salary editing with audit history, analytics that answer "how does this
+org pay people", the deterministic seed, deploy, demo. Out entirely: CSV import
+*and* export, a custom login page, containerization, async processing, employee
+self-service.
+
+**Why.** Their email named the grading axes — clean architecture, server-side
+performance across 10,000 records, strong documentation — and said outright
+that those matter more than breadth or speed of submission. Import and export
+were the last two features whose cost bought reach rather than depth, so they
+go, and the effort lands on making the core exact.
+
+**What moved.**
+
+- CSV import was already a stretch; export joins it in Deliberately Out. Both
+  keep a design sketch in `ARCHITECTURE.md` §8, because the reasoning is worth
+  showing even when the code is not written.
+- `/analytics/distribution` dropped. Summary plus three group breakdowns
+  answer the product question; a histogram was a fourth chart without a fourth
+  question behind it.
+- `ARCHITECTURE.md` §5 (the import pipeline) is gone, so §6–§10 renumbered to
+  §5–§9. Cross-references were updated across the docs *and* in code comments
+  and test docstrings that cite section numbers — a comment pointing at the
+  wrong section is a small lie that costs the next reader real time.
+
+**Also corrected.** §2 and §10 still described `docker compose up` as the local
+story, four phases after Docker was removed. Now fixed — the doc had been
+carrying that error since Phase 0, and it was flagged in this log twice without
+being repaired. The §3 ERD likewise now shows `old_currency`/`new_currency` on
+`SALARY_CHANGE` and drops the import entities, matching what is actually built.
+
+**Cost.** A reviewer looking for import/export will not find it. That is the
+point of writing the boundary down rather than leaving it to be inferred from
+absence.
+
+**Known residue.** `apps/imports/` still exists as an empty scaffold in
+`INSTALLED_APPS`. Removing it is a code change and this was a documentation
+pass; it is queued rather than smuggled in.

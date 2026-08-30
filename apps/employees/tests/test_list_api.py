@@ -1,7 +1,7 @@
 """Server-side list behaviour on GET /api/v1/employees.
 
 Pagination, filtering, search and ordering all happen in the database. The
-browser never receives 10,000 rows (ARCHITECTURE.md section 8).
+browser never receives 10,000 rows (ARCHITECTURE.md section 7).
 """
 
 import uuid

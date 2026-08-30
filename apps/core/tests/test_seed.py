@@ -329,7 +329,7 @@ class TestFlush:
 
 class TestSeedCreatesNothingElse:
     def test_no_users_are_created(self, db):
-        """Authentication is out of scope (REQUIREMENTS.md section 7), so the
+        """Authentication is out of scope (REQUIREMENTS.md section 6), so the
         seed creates employees and rates and nothing else."""
         seed_employees(50)
         assert get_user_model().objects.count() == 0

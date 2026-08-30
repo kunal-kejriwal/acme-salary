@@ -1,161 +1,101 @@
-# BUILD_PROMPTS.md — Claude Code phase prompts
+# BUILD_PROMPTS — Claude Code phase prompts (rev 2, final scope)
 
-Run these one at a time in Claude Code, in order. Review the diff and test output after each phase before starting the next. This file is committed as part of `AI_USAGE.md` evidence.
+Run these one at a time, in order. Review the diff and test output after each
+phase before starting the next. Committed as part of `AI_USAGE.md` evidence.
 
-> **Scope confirmed by the Incubyte team** (see `REQUIREMENTS.md` §3). Authentication is out of scope entirely; CSV import is an optional stretch and now runs last, after deploy prep. Phases are renumbered accordingly.
+**Scope authority:** the assessment brief + Incubyte's clarification email.
+Nothing else.
+
+**In:** employee records, list at 10k (pagination/filter/search/order), salary
+editing with audit history, analytics that answer "how does the org pay
+people", seed, deploy, demo.
+
+**Out entirely:** CSV import/export, custom auth/login page (Django admin is
+the HR credential), Docker, async, employee self-service.
+
+Phases 0–4 are shipped: scaffold, core money layer, employee model + CRUD,
+list at scale, deterministic seed.
 
 ---
 
-## Phase 0 — Scaffold
+## Phase 5 — Docs re-scope (no code)
 ```
-Read CLAUDE.md, docs/ARCHITECTURE.md and docs/REQUIREMENTS.md fully.
+Align all docs with the final scope above, in one commit:
+"docs: re-scope to brief + team clarifications".
 
-Scaffold the project: Django 5 project with config/ settings package (base/dev/prod),
-apps/core, apps/employees, apps/imports, apps/analytics; DRF + django-filter +
-drf-spectacular + django-cors-headers wired; pytest-django configured with SQLite
-test settings; Vite React TS app in frontend/ with Ant Design installed; README
-with run instructions.
-
-Verify: `pytest` runs, `python manage.py check` passes. Commit in logical steps
-(scaffold, test config, frontend shell) — not one commit.
-```
-
-## Phase 1 — Core domain: currencies + FX
-```
-TDD the core money layer in apps/core:
-- Currency choices (INR, USD, GBP, EUR, SGD, BRL, JPY, AUD)
-- fx_rates static table/model seeded from a fixture in-repo
-- to_usd(amount: Decimal, currency) service function
-
-Tests first: conversion correctness against hand-computed values, Decimal
-precision (no float drift), unknown-currency error. Then implement.
+- REQUIREMENTS.md: features are exactly — F1 employee records (CRUD via API,
+  admin as back-office), F2 list at scale (pagination, filters incl. salary_usd
+  range, search, stable ordering), F3 salary change history (audit trail,
+  shown on employee detail), F4 analytics (summary + by-country + by-title +
+  by-department, USD), F5 deterministic 10k seed. Move CSV import AND export
+  to Deliberately Out ("team guidance: optional stretch; cut to keep the core
+  polished"). Auth stays out per team guidance; Django admin noted as the HR
+  manager's credential and back-office.
+- ARCHITECTURE.md: remove import endpoints and §5 import pipeline (fold a
+  two-line "stretch path" note into §9). Remove export endpoint. §10 already
+  no-Docker; verify. Analytics endpoints stay as specced minus /distribution
+  — keep summary, by-country, by-department, by-title.
+- DECISIONS.md: dated entry — final scope locked to brief + clarifications;
+  one line on why (their email: clean core + performance + docs over breadth).
+- Leave git history alone; just ensure current docs carry no import/export/
+  login references. Grep to verify: "import", "export", "login", "compose".
 ```
 
-## Phase 2 — Employee model + CRUD API
+## Phase 6 — Analytics API
 ```
-TDD the Employee model and DRF CRUD per docs/ARCHITECTURE.md §3–4:
-- Model with employee_code (unique), names, department, job_title, country,
-  joined_on, salary_amount, currency, salary_usd, timestamps; indexes per §8
-- salary_usd computed at write time via core.to_usd (service layer, not signals)
-- SALARY_CHANGE audit row appended on every salary update, with tests proving it
-- /api/v1/employees CRUD via DRF ViewSet, thin views calling services
+TDD apps/analytics, all values in USD, read-only endpoints:
 
-Test order per behavior: model constraints → service logic → API contract
-(APIClient). Include: create, update writes audit, delete, validation failures
-(negative salary, bad currency).
-```
+- GET /api/v1/analytics/summary — headcount, total annual cost, average,
+  median.
+- GET /api/v1/analytics/by-country, /by-department, /by-title — headcount,
+  average, median, min, max per group, ordered by headcount desc.
 
-## Phase 3 — List view: pagination, filtering, search
-```
-TDD server-side list behavior on GET /api/v1/employees:
-- Page-number pagination (default 25)
-- Filters via django-filter: country, department, job_title, currency,
-  salary_usd min/max
-- Ordering: name, salary_usd, joined_on
-- Free-text search across names + employee_code
+Rules: ORM aggregation only; median via a portable expression that passes on
+SQLite (record approach in DECISIONS.md). Tests: hand-computed fixture
+(~8 employees, mixed currencies) asserting exact values — median must
+discriminate from mean on the fixture (skew it); empty-DB behavior (zeros,
+not 500s); assertNumQueries pinned per endpoint (one aggregate query each,
+no per-group queries).
 
-Edge tests: empty page, out-of-range page, combined filters, filter+search+order
-together. Assert query count on the list endpoint (assertNumQueries) to prove no
-N+1.
-```
-
-## Phase 4 — Seed command
-```
-TDD `python manage.py seed --count 10000` in apps/core:
-- Deterministic given a seed. Test the PROPERTY, not a stored checksum: run
-  the seed twice (--flush between) and assert identical rows. A hardcoded
-  checksum breaks on any Faker upgrade, punishing a dependency bump rather
-  than catching a determinism regression. Pin Faker in requirements anyway.
-  Add the converse test: a different seed must produce different data.
-- Countries weighted across the 8 currencies; ~10 departments; a realistic set
-  of job titles per department
-- Salaries realistic IN LOCAL CURRENCY, driven by (country, job title): each
-  pair gets a local base with log-normal spread, so JPY salaries are in
-  millions, INR in lakhs, USD in tens of thousands. One global range would
-  produce nonsense and make the USD normalisation pointless. Title drives the
-  multiplier so /analytics/by-title shows a seniority gradient.
-- Seed must guarantee FX rates exist before converting — load the fixture
-  first, or row one hits MissingRateError on a fresh database. Test that
-  seeding a virgin DB succeeds.
-- Creates employees and FX rates only. No HR user: auth is out of scope
-  (REQUIREMENTS.md §7).
-- bulk_create(batch_size=1000); assert query count rather than wall time
-  (wall-clock assertions are flaky on CI); exactly N rows land; --flush to
-  re-seed.
-
-This is the confirmed way the 10,000 records are populated (REQUIREMENTS.md §3),
-so it carries the load CSV import would otherwise have carried.
-
-Then run it for real at 10,000 and record measured timings for the seed and
-the list endpoint in DECISIONS.md — Sandli named server-side performance at
-10k as a grading axis, so it needs evidence rather than a claim.
-```
-
-## Phase 5 — Analytics
-```
-TDD apps/analytics per docs/ARCHITECTURE.md §4, all in USD:
-- /analytics/summary: headcount, total cost, avg, median
-- /analytics/by-country, /by-department and /by-title: headcount, avg, median,
-  p10/p90
-- /analytics/distribution: histogram buckets
-
-Tests: small hand-computed fixture (e.g. 7 employees, known median/percentiles)
-— assert exact values. Use ORM aggregation; portable percentile expression that
-passes on SQLite (document in DECISIONS.md).
-```
-
-## Phase 6 — CSV export
-```
-TDD:
-- GET /api/v1/exports/employees.csv honoring the same filters as the list view
-  (test: filtered export row count + header row, including job_title)
-
-No auth work: authentication is out of scope per team guidance
-(REQUIREMENTS.md §7).
+Then: append these endpoints to scripts/benchmark.py, run at 10k, extend the
+timing table in DECISIONS.md.
 ```
 
 ## Phase 7 — Frontend
 ```
-Build the React SPA with Ant Design against the running API:
-- Employees page: Table with server-side pagination/sort, filter bar
-  (country/department/job title/currency/salary range), search box, create/edit
-  drawer with validation, delete confirm, salary history drawer
-- Dashboard: summary stat cards, by-country, by-department and by-title bar
-  charts, salary distribution histogram (@ant-design/plots)
+Build the SPA against the running API. React 18 + TS + Ant Design, typed API
+client module, react-router. Pages:
 
-No login page — the app is internal and the user is already authorized.
+1. Employees (home) — Table wired to /employees: server-side pagination,
+   column sorting, filter bar (country, department, job title, currency,
+   salary_usd min/max), search box (name/code). Row click → detail.
+2. Employee detail — record card (all fields, local salary + USD); "Edit"
+   opening a drawer form (validation mirrors API errors); History tab —
+   table of salary changes (old → new, currency, changed_by, date) from
+   /employees/{id}/salary-history, empty-state message when none. A salary
+   edit must refresh both the card and the History tab (this is the demo
+   moment: change is visible in history immediately).
+3. Dashboard — stat cards from /analytics/summary; three bar charts
+   (by-country, by-department, by-title) via @ant-design/plots, labelled USD.
 
-Vitest + Testing Library on: employees table renders server data, filter bar
-drives server-side queries. Keep API access in a typed client module.
-Commit per page, tests alongside.
+No login page — app assumes the authorized HR manager per team guidance;
+README points at /admin (superuser) for back-office.
+
+Vitest + Testing Library, MSW for API mocks: table renders server page and
+passes filter params through; detail page shows history rows; salary edit
+posts and re-renders history. Keep tests to those three flows — targeted,
+not exhaustive. Commit per page.
 ```
 
-## Phase 8 — Deploy prep
+## Phase 8 — Deploy + demo prep
 ```
-Production settings (env-driven DATABASE_URL, ALLOWED_HOSTS, CORS), Gunicorn,
-Railway config with release command (migrate + seed), Vercel config for
-frontend/, README deploy section. Final pass: run full suite, report timing,
-capture query-count and timing evidence for the list and analytics endpoints at
-10,000 records (REQUIREMENTS.md §8), update DECISIONS.md.
-```
-
----
-
-## Phase 9 — CSV import (stretch)
-
-**Build only if every core phase above is complete and documented.** The Incubyte team confirmed bulk CSV import with row-by-row validation is not expected (`REQUIREMENTS.md` §6). Nothing in the core scope depends on this.
-
-```
-TDD the import pipeline per docs/ARCHITECTURE.md §5, in apps/imports:
-- Import + ImportRowError models
-- POST /api/v1/imports: multipart CSV; header validation fails fast with 400
-- Stream-parse; per-row validation (types, currency, non-negative salary, date
-  format, duplicate employee_code); collect errors with row numbers
-- bulk_create(batch_size=1000) for valid rows; partial-import policy
-- Response: full report (counts + errors); GET /imports/{id}; GET
-  /imports/{id}/errors.csv download; sha256 checksum stored
-
-Test fixtures: clean file, file with mixed valid/invalid rows (assert exact
-counts and error rows), wrong header, empty file, duplicate codes within file
-vs against DB.
+- Prod settings hardened: SECRET_KEY required from env (no fallback),
+  DEBUG=False, ALLOWED_HOSTS, CORS_ALLOWED_ORIGINS env-driven, WhiteNoise
+  for admin static.
+- Railway: Nixpacks, gunicorn, release command `migrate && seed --if-empty
+  --count 10000` (implement --if-empty: no-op when employees exist, tested).
+- Vercel: frontend/, VITE_API_BASE_URL env; README deploy section with both
+  URLs and the superuser bootstrap step.
+- Final pass: full suite timing, benchmark table refreshed, DECISIONS.md
+  closing entry, README demo-video link placeholder.
 ```

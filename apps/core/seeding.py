@@ -215,7 +215,7 @@ def seed_employees(
     """Create `count` employees. Returns how many landed.
 
     Creates employees and FX rates. Nothing else -- no users: authentication
-    is out of scope (REQUIREMENTS.md §7).
+    is out of scope (REQUIREMENTS.md §6).
     """
     if count < 0:
         raise SeedError(f"count must be zero or more, got {count}.")

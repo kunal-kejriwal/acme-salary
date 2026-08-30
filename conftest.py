@@ -18,7 +18,7 @@ def fx_rates(db):
 
 @pytest.fixture
 def hr_user(db):
-    """The single HR manager persona (ARCHITECTURE.md section 9)."""
+    """The single HR manager persona (ARCHITECTURE.md section 8)."""
     return get_user_model().objects.create_user(
         username="hr@acme.test",
         email="hr@acme.test",

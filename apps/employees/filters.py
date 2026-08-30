@@ -42,5 +42,5 @@ class EmployeeFilter(django_filters.FilterSet):
 
     class Meta:
         model = Employee
-        # Exact matches on the indexed columns from ARCHITECTURE.md section 8.
+        # Exact matches on the indexed columns from ARCHITECTURE.md section 7.
         fields = ["country", "department", "job_title", "currency"]
