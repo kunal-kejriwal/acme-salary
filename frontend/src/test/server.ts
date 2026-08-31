@@ -62,6 +62,13 @@ export const patchRequests: Record<string, unknown>[] = []
 /** Flipped by a test to make the history endpoint start returning a row. */
 export let historyRows: SalaryChange[] = []
 
+/** What the logout endpoint answers. 403 reproduces the CSRF failure. */
+export let logoutStatus = 204
+
+export function setLogoutStatus(status: number) {
+  logoutStatus = status
+}
+
 export function setHistory(rows: SalaryChange[]) {
   historyRows = rows
 }
@@ -70,6 +77,7 @@ export function resetRecording() {
   listRequests.length = 0
   patchRequests.length = 0
   historyRows = []
+  logoutStatus = 204
 }
 
 export const handlers = [
@@ -82,6 +90,12 @@ export const handlers = [
       last_name: '',
       is_staff: true,
     }),
+  ),
+
+  http.post(`${BASE}/auth/logout/`, () =>
+    logoutStatus === 204
+      ? new HttpResponse(null, { status: 204 })
+      : HttpResponse.json({ detail: 'CSRF Failed' }, { status: logoutStatus }),
   ),
 
   http.get(`${BASE}/employees/`, ({ request }) => {

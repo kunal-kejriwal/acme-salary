@@ -31,9 +31,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(await auth.login(username, password))
   }, [])
 
+  /**
+   * Always signs the person out locally, whatever the server says.
+   *
+   * The POST can fail for reasons that have nothing to do with intent: an
+   * already-expired session answers 403, and so does any CSRF problem. If a
+   * rejection here skipped `setUser(null)`, the button would do nothing at
+   * all -- no state change, no navigation, no message -- which is a worse
+   * outcome than a server session that lingers until it expires on its own.
+   */
   const signOut = useCallback(async () => {
-    await auth.logout()
-    setUser(null)
+    try {
+      await auth.logout()
+    } catch {
+      // Deliberately swallowed; the local session is cleared either way.
+    } finally {
+      setUser(null)
+    }
   }, [])
 
   return (

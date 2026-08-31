@@ -1040,3 +1040,44 @@ the header before being asserted to succeed with it, so the passing case cannot
 pass for the wrong reason. The test client is not a browser and can read its own
 cookie jar, so these cover Django's contract; the browser behaviour that caused
 the incident is addressed by the architecture, not by a test.
+
+---
+
+## 2026-08-31 — Sign out clears the local session unconditionally
+
+**Decision.** `signOut` attempts the logout POST, swallows any failure, and
+clears local state in a `finally`.
+
+**Why.** It read:
+
+```ts
+await auth.logout()
+setUser(null)
+```
+
+and the button did `await signOut()` then `navigate('/login')`. A rejection
+from the POST skipped every line after it — no state change, no navigation, no
+message. The button appeared inert, which is how the bug was reported: "sign
+out is not working."
+
+The 403 behind it had its own cause (cross-origin cookies, fixed by the proxy),
+but the shape was wrong independently. **403 is also what an already-expired
+session returns** — the case where someone most wants the button to work. A
+sign-out that only functions when the network cooperates is backwards.
+
+**Cost.** If the POST genuinely fails, the server session survives until it
+expires on its own while the browser considers itself signed out. That is worse
+than a clean logout and much better than a button that does nothing: the local
+session cookie is what the browser presents, and the person is off the
+authenticated views either way.
+
+**Verified.** Reverting the `try/finally` fails three of the four sign-out
+tests. The one that still passes is the happy path, which is precisely why the
+happy path alone was not enough to catch this.
+
+**Note on the earlier test coverage.** Phase 7 scoped the frontend suite to
+three flows, deliberately, and auth was not among them. That was a reasonable
+call and it also left this uncovered — the failure was in the one interaction
+nobody had written a test for. Scoping tests to what carries risk means
+accepting that something outside the scope can break; worth naming rather than
+pretending the coverage choice was costless.
