@@ -5,7 +5,6 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
-      "comment": "Client-side routing: every path must serve the SPA shell, or a reload on /employees/<id> 404s at the edge.",
       "source": "/((?!assets/).*)",
       "destination": "/index.html"
     }

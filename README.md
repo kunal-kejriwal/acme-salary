@@ -190,8 +190,16 @@ Import the repo, set **Root Directory** to `frontend`, and set one variable:
 |---|---|
 | `VITE_API_BASE_URL` | `https://<your-railway-domain>/api/v1` |
 
-[`frontend/vercel.json`](frontend/vercel.json) rewrites unknown paths to the
-SPA shell, so reloading `/employees/<id>` does not 404 at the edge.
+[`frontend/vercel.json`](frontend/vercel.json) rewrites every path except
+`/assets/*` to `index.html`. React Router owns the URL once the app has
+loaded, but a cold reload on `/employees/<id>` asks Vercel's edge for a file
+that does not exist and would 404 without the rewrite. The `/assets/`
+exclusion keeps the built JS and CSS being served as themselves rather than
+as the HTML shell.
+
+That file is validated against Vercel's schema, which rejects unknown
+properties — and JSON has no comment syntax, so the reasoning lives here
+rather than in the file.
 
 Because the two live on different domains, the session cookie has to survive a
 cross-site request: `config/settings/prod.py` sets `SameSite=None` with
