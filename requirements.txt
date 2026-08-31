@@ -1,3 +1,37 @@
-# Nixpacks and most PaaS builders look for a requirements.txt at the root.
-# The real lists live under requirements/.
--r requirements/prod.txt
+# Production dependencies. Flat and pinned, deliberately.
+#
+# This is the manifest builders actually read, so it carries the real list
+# rather than `-r` includes pointing somewhere else. Nested includes are a
+# reliable way to have a minimal-context builder resolve the wrong file, or
+# no file, and the failure surfaces mid-deploy rather than at review.
+#
+# Exact pins because a deploy should install what was tested, not whatever
+# the range resolved to that morning.
+#
+# Local development installs requirements/dev.txt, which pulls this in and
+# adds the test tooling on top -- so there is one production list, not two.
+
+# --- Framework -------------------------------------------------------------
+Django==5.2.17
+djangorestframework==3.18.0
+django-filter==26.1
+drf-spectacular==0.30.0
+django-cors-headers==4.9.0
+django-environ==0.14.0
+
+# --- Database --------------------------------------------------------------
+# psycopg 3, which Django 5 supports natively and which ships wheels for
+# current Python versions.
+psycopg[binary]==3.3.4
+
+# --- Serving ---------------------------------------------------------------
+gunicorn==26.2.0
+# Serves the admin's static files from the app process; the admin is the only
+# server-rendered surface.
+whitenoise==6.12.0
+
+# --- Seeding ---------------------------------------------------------------
+# Production, not dev: `manage.py seed --if-empty` runs in the release
+# command (railway.json), and apps/core/seeding.py imports faker at module
+# level. Leaving it out of this file breaks the deploy, not the test suite.
+Faker==40.37.0

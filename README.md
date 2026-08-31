@@ -138,7 +138,8 @@ frontend/          Vite + React + TypeScript + Ant Design SPA
   src/api/         typed API client, CSRF, Table-to-DRF adapter
   src/pages/       login, employees, employee detail, dashboard
   src/test/        three-flow suite with MSW
-requirements/      base / dev / prod dependency sets
+requirements.txt   production dependencies, flat and pinned
+requirements/dev.txt  the above plus test tooling
 scripts/           benchmark.py, reproducible performance measurements
 docs/              architecture, decisions, build prompts
 ```

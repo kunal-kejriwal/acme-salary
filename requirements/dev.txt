@@ -1,10 +1,11 @@
--r base.txt
+# Local development: everything production runs, plus the test tooling.
+#
+# Includes the production manifest rather than restating it, so the two
+# cannot drift. The nested include is fine here -- pip resolves it locally,
+# and no deployment builder reads this file.
 
-pytest>=9.1,<10.0
-pytest-django>=4.14,<5.0
-pytest-cov>=7.1,<8.0
-# Pinned exactly: the seed's determinism guarantee covers a fixed Faker
-# version. Names are drawn from Faker, so an upgrade can legitimately
-# change them -- the seed tests assert determinism as a property, but the
-# committed dataset should only move when someone chooses to move it.
-Faker==40.37.0
+-r ../requirements.txt
+
+pytest==9.1.1
+pytest-django==4.14.0
+pytest-cov==7.1.0

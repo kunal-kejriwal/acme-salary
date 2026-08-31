@@ -1,7 +1,0 @@
--r base.txt
-
-gunicorn>=26.0
-# Serves the admin's static files from the app process. The admin is the
-# only server-rendered surface; adding a CDN or a separate static host for
-# it would be infrastructure for one page.
-whitenoise>=6.9
