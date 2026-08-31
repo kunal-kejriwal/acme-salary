@@ -5,8 +5,13 @@
  * one place and the components stay dumb.
  */
 
+// Relative by default: the API is served from the same origin as the app,
+// via a proxy rewrite in vercel.json and the matching dev-server proxy in
+// vite.config.ts. Same-origin is what makes the session and CSRF cookies
+// first-party -- readable by JavaScript, unaffected by third-party cookie
+// blocking, and safe under the default SameSite=Lax.
 export const API_BASE_URL: string =
-  import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api/v1'
+  import.meta.env.VITE_API_BASE_URL ?? '/api/v1'
 
 /** DRF's page-number pagination envelope. */
 export interface Page<T> {
@@ -61,6 +66,12 @@ const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
  * a header. The app calls `GET /auth/me` on load, which is decorated with
  * `ensure_csrf_cookie`, so the token exists before the first POST — including
  * the login POST, which is otherwise the one request with no prior GET.
+ *
+ * This only works same-origin. `document.cookie` exposes cookies for the
+ * current document's domain and nothing else, so serving the SPA and the API
+ * from different domains makes the token unreadable and every write fails
+ * with "CSRF token missing". The proxy in vercel.json is what keeps this
+ * function viable.
  */
 export function getCsrfToken(): string | null {
   const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]*)/)

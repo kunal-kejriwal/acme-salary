@@ -188,7 +188,12 @@ Import the repo, set **Root Directory** to `frontend`, and set one variable:
 
 | Variable | Value |
 |---|---|
-| `VITE_API_BASE_URL` | `https://<your-railway-domain>/api/v1` |
+| `VITE_API_BASE_URL` | `/api/v1` |
+
+**Relative, not absolute.** `vercel.json` proxies `/api/*` through to the
+Railway service, so the browser only ever talks to the Vercel origin. Edit the
+`destination` in that file to your own Railway domain. Vite bakes this variable
+in at build time, so changing it needs a redeploy.
 
 [`frontend/vercel.json`](frontend/vercel.json) rewrites every path except
 `/assets/*` to `index.html`. React Router owns the URL once the app has
@@ -201,9 +206,25 @@ That file is validated against Vercel's schema, which rejects unknown
 properties — and JSON has no comment syntax, so the reasoning lives here
 rather than in the file.
 
-Because the two live on different domains, the session cookie has to survive a
-cross-site request: `config/settings/prod.py` sets `SameSite=None` with
-`Secure=True`, which browsers only honour together.
+**Why the proxy rather than direct cross-origin calls.** With the SPA on
+`vercel.app` and the API on `railway.app`, the session cookie is a third-party
+cookie: browsers block it by default in incognito and are removing support
+generally. Worse, `document.cookie` only exposes cookies for the current
+document's domain, so the SPA could not read the CSRF token Django set on the
+API domain, and every write failed with "CSRF token missing" — login being the
+only exception, since it carries no authenticator and so no CSRF check.
+
+Proxying makes both cookies first-party, which restores the default security
+model: `SameSite=Lax`, readable by JavaScript, unaffected by third-party cookie
+policy. `config/settings/prod.py` sets `Lax` accordingly, and CORS becomes
+irrelevant to the app — the configuration is left in place only for direct API
+access. The admin stays reachable on the Railway domain, first-party to itself.
+
+`vite.config.ts` proxies `/api` the same way for local development, so the two
+environments share one origin model. Without it the dev server (`:5173`) and
+the API (`:8000`) are different origins that *happen* to share cookies, because
+cookies ignore the port and both are `localhost` — an accident that hid this
+bug locally until it reached production.
 
 ### Demo
 

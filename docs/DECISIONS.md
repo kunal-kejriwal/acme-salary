@@ -983,3 +983,60 @@ test that would have passed with filtering removed, an ordering test with only
 one row in it, and a history assertion matching the wrong element. Each is
 recorded above at the point it was found. A test that cannot fail is not
 evidence, and the difference is invisible until someone checks.
+
+---
+
+## 2026-08-31 — Same-origin proxy over cross-site cookies
+
+**Decision.** Vercel proxies `/api/*` to the Railway service (`vercel.json`),
+the SPA calls a relative `/api/v1` base URL, and production cookies go back to
+`SameSite=Lax`. The dev server proxies the same path so both environments share
+one origin model.
+
+**Why.** The deployed app was SPA on `vercel.app`, API on `railway.app`, with
+`SameSite=None; Secure` to let the session cookie travel cross-site. Two things
+were wrong with that, one immediately and one on a clock:
+
+1. **The CSRF token was unreadable.** `document.cookie` exposes only cookies
+   belonging to the current document's domain. Django set `csrftoken` on the
+   API domain; the SPA ran on the Vercel domain; the `X-CSRFToken` header was
+   never populated and every write was rejected. It surfaced as "sign out is
+   broken", which understated it — the salary edit, the whole demo moment, was
+   equally broken. Login worked only because `LoginView` carries no
+   authenticator and therefore no CSRF enforcement, which is precisely what
+   made the failure look narrow.
+2. **The session cookie was third-party.** Browsers block those by default in
+   incognito — the exact context a reviewer opens — and are removing them
+   generally. `SameSite=None` is a losing position: it is a request for
+   permission that browsers are increasingly declining.
+
+**The fix considered and rejected.** Return the CSRF token in the login and
+`/auth/me` response bodies, so the SPA holds it without reading the cookie.
+That repairs the header and leaves the session cookie exactly as exposed —
+treating the symptom while the actual dependency, third-party cookie support,
+keeps eroding underneath.
+
+**Same-origin removes the class.** One origin means both cookies are
+first-party: readable by JavaScript, sent under the default `SameSite=Lax`,
+untouched by third-party cookie policy, and working in incognito. CORS becomes
+irrelevant to the app.
+
+**Cost.** API traffic takes an extra hop through Vercel's edge, and the Railway
+domain is hardcoded in `vercel.json` because Vercel does not interpolate
+environment variables into rewrite destinations. Both are cheap against a
+security model that stops depending on a browser feature being withdrawn.
+
+**Local development now mirrors it**, which is the part worth keeping. The bug
+could not reproduce locally: the dev server on `:5173` and the API on `:8000`
+are different origins, but cookies ignore the port and both are `localhost`, so
+`document.cookie` could read the token. Development passed for a reason that
+did not generalise. `vite.config.ts` now proxies `/api` too, so the origin model
+is the same in both places.
+
+**Tests.** `apps/accounts/tests/test_csrf_for_spa.py` uses
+`enforce_csrf_checks=True` — without it Django's CSRF machinery is bypassed and
+none of the assertions can fail. Each write is asserted to be *refused* without
+the header before being asserted to succeed with it, so the passing case cannot
+pass for the wrong reason. The test client is not a browser and can read its own
+cookie jar, so these cover Django's contract; the browser behaviour that caused
+the incident is addressed by the architecture, not by a test.
