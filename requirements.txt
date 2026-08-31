@@ -31,7 +31,7 @@ gunicorn==26.2.0
 whitenoise==6.12.0
 
 # --- Seeding ---------------------------------------------------------------
-# Production, not dev: `manage.py seed --if-empty` runs in the release
-# command (railway.json), and apps/core/seeding.py imports faker at module
-# level. Leaving it out of this file breaks the deploy, not the test suite.
+# Production, not dev: `manage.py seed --if-empty` runs as the deploy's
+# pre-deploy command, and apps/core/seeding.py imports faker at module level.
+# Leaving it out of this file breaks the deploy, not the test suite.
 Faker==40.37.0

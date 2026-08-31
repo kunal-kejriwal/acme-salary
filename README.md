@@ -166,9 +166,25 @@ orchestrating.
    | `CORS_ALLOWED_ORIGINS` | your Vercel URL |
    | `CSRF_TRUSTED_ORIGINS` | your Vercel URL |
 
-3. Deploy. [`railway.json`](railway.json) runs `migrate` and
-   `seed --if-empty --count 10000` before each release, so a fresh database
-   fills itself and later deploys leave the data alone.
+3. Set the **pre-deploy command** in the service's Deploy settings:
+
+   ```bash
+   python manage.py migrate --noinput --settings=config.settings.prod && \
+   python manage.py seed --if-empty --count 10000 --settings=config.settings.prod
+   ```
+
+   It runs before each release, so a fresh database fills itself and later
+   deploys leave the data alone. `--if-empty` is what makes it safe to leave
+   in place.
+
+   This lives in the dashboard, not in a repo file. There was a `railway.json`
+   here that declared the same command plus a builder and a start command;
+   Railway was not applying it, so the file documented a deploy that was not
+   happening. It is gone rather than corrected — the start command is already
+   in [`Procfile`](Procfile), which Railway's builder does read, and
+   `collectstatic` is run automatically by its Python provider. That left the
+   pre-deploy command as the only setting the file was needed for, and one
+   line in a dashboard beats a config file that is silently ignored.
 4. **Create the HR account**, once, from the Railway shell:
 
    ```bash
@@ -228,9 +244,11 @@ bug locally until it reached production.
 
 ### Demo
 
-- **Live app:** _(deploy and paste the Vercel URL here)_
-- **API docs:** _(your Railway domain)_`/api/docs/`
-- **Walkthrough video:** _(paste link here)_
+- **Live app:** _(paste the Vercel URL here)_
+- **API docs:** <https://acme-salary-production-ddd1.up.railway.app/api/docs/>
+
+Sign-in credentials are supplied separately — the seeded employee records are
+fake, but the account is not shared in a public repo.
 
 ---
 
