@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 
 import { ApiError } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
+import { useDocumentTitle } from '../useDocumentTitle'
 
 const { Title, Paragraph } = Typography
 
@@ -13,6 +14,7 @@ interface Credentials {
 }
 
 export default function LoginPage() {
+  useDocumentTitle('Sign in')
   const { signIn } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()

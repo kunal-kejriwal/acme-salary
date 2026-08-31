@@ -16,6 +16,7 @@ import {
 } from '../api/table'
 import { CURRENCIES, type Employee } from '../api/types'
 import { money } from '../format'
+import { useDocumentTitle } from '../useDocumentTitle'
 
 const { Title } = Typography
 
@@ -47,6 +48,7 @@ const COLUMNS = [
 ]
 
 export default function EmployeesPage() {
+  useDocumentTitle('Employees')
   const navigate = useNavigate()
   const [query, setQuery] = useState<TableQuery>(emptyQuery)
   const [page, setPage] = useState<Page<Employee>>()

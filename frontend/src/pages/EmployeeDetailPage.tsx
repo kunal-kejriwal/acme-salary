@@ -23,6 +23,7 @@ import { ApiError } from '../api/client'
 import { employees } from '../api/endpoints'
 import { CURRENCIES, type Employee, type SalaryChange } from '../api/types'
 import { dateTime, money, usd } from '../format'
+import { useDocumentTitle } from '../useDocumentTitle'
 
 const { Title } = Typography
 
@@ -34,6 +35,10 @@ export default function EmployeeDetailPage() {
   const [history, setHistory] = useState<SalaryChange[]>([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(false)
+
+  useDocumentTitle(
+    employee ? `${employee.first_name} ${employee.last_name}` : undefined,
+  )
 
   /**
    * Reload the record and its history together.

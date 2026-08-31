@@ -5,10 +5,12 @@ import { useEffect, useState } from 'react'
 import { analytics } from '../api/endpoints'
 import type { SalaryByGroup, SalarySummary } from '../api/types'
 import { compactUsd, usd } from '../format'
+import { useDocumentTitle } from '../useDocumentTitle'
 
 const { Title, Text } = Typography
 
 export default function DashboardPage() {
+  useDocumentTitle('Dashboard')
   const [summary, setSummary] = useState<SalarySummary>()
   const [byCountry, setByCountry] = useState<SalaryByGroup[]>([])
   const [byDepartment, setByDepartment] = useState<SalaryByGroup[]>([])

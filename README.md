@@ -244,7 +244,7 @@ bug locally until it reached production.
 
 ### Demo
 
-- **Live app:** _(paste the Vercel URL here)_
+- **Live app:** <https://acme-salary-gamma.vercel.app/>
 - **API docs:** <https://acme-salary-production-ddd1.up.railway.app/api/docs/>
 
 Sign-in credentials are supplied separately — the seeded employee records are
